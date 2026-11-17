@@ -155,6 +155,7 @@ export type ClosedTab = {
   tab: TabSnapshot;
   tabId?: string;
   restoreFrom?: string;
+  closeBatch?: string;
   windowId: string;
   index: number;
   group: ClosedGroupInfo | null;
