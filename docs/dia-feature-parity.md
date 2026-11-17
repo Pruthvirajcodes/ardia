@@ -723,7 +723,7 @@ Chrome; n/t = not pressed there by the test (clipboard and window-level AppKit i
 | Email Page Location | — | ⇧⌘I | ⇧⌘I (File menu) | ✓ ✓ ✓ ✓ | ✅ new |
 | Print / Print Using System Dialog | ⌘P / — | ⌘P / ⌥⌘P | ⌘P / ⌥⌘P (File menu) | ✓ ✓ ✓ ✓ | ✅ ⌥⌘P new |
 | Undo / Redo / Select All | ⌘Z / ⇧⌘Z / ⌘A | same | same; Settings › Keyboard Shortcuts › "⌘Z reopens closed tabs" (Arc's, off by default): outside text fields and editable page content Undo reads Undo Close Tab and reopens the last closed tab, again for each earlier one | ✓ ✓ ✓ ✓ (⌘A selects a page field's text: checked) | ✅ |
-| Cut / Copy / Paste / Paste and Match Style | ⌘X / ⌘C / ⌘V / ⇧⌘V | same | same | n/t ✓ n/t n/t (the Edit menu's, untouched) | ✅ |
+| Cut / Copy / Paste / Paste and Match Style | ⌘X / ⌘C / ⌘V / ⇧⌘V | ⌘X / ⌘C / ⌘V / ⌥⇧⌘V | Dia's (+ hidden ⌥⇧⌘V, macOS's and Chrome's Paste and Match Style, which did nothing before 2026-11-17; watch `usage_counts.paste_match_style_option_keys` against `paste_match_style_keys`) | n/t ✓ n/t n/t (the Edit menu's, untouched); ⇧⌘V and ⌥⇧⌘V paste into a page field: checked | ✅ |
 | Copy URL / as Markdown | ⇧⌘C / ⌥⇧⌘C | ⇧⌘C inspects | Dia's | ✓ ✓ ✓ ✓ | ✅ |
 | Find / Next / Previous | ⌘F / ⌘G / ⇧⌘G | same | same | ✓ ✓ ✓ ✓ | ✅ |
 | Use Selection for Find | — (⌘E is Chat) | ⌘E | ⌘E (no Chat here) | ✓ ✓ ✓ ✓ | ✅ new |
