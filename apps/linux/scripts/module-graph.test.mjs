@@ -128,8 +128,9 @@ test("production graph uses current Linux adapters and one canonical shared stat
     [`${browser}state/live/engine.ts`, `${linux}liveSources.ts`],
     [`${browser}state/live/googleAuth.ts`, `${linux}liveSources.ts`],
     [`${browser}state/live/googleAuth.ts`, `${linux}liveNet.ts`],
-    [`${browser}components/settings/panes/LiveFolders.tsx`, `${linux}liveSources.ts`],
-    [`${browser}components/settings/panes/LiveFolders.tsx`, `${linux}liveNet.ts`],
+    [`${browser}components/settings/panes/LiveFoldersSection.tsx`, `${linux}liveSources.ts`],
+    [`${browser}components/settings/panes/LiveFoldersSection.tsx`, `${linux}liveNet.ts`],
+    [`${browser}components/settings/panes/ConnectAccountSheet.tsx`, `${linux}liveSources.ts`],
     [`${linux}liveSources.ts`, `${linux}hostLive.ts`],
   ];
   for (const [importer, adapter] of liveImporters) assert.ok(graph.get(importer)?.importedIds.includes(adapter), `${importer} uses ${adapter}`);
@@ -170,11 +171,11 @@ test("production graph uses current Linux adapters and one canonical shared stat
     assert.deepEqual(graph.get(wrapper).dynamicallyImportedIds, [eager]);
   }
 
-  const extensionsPane = graph.get(`${browser}components/settings/panes/Extensions.tsx`);
+  const extensionsPane = graph.get(`${browser}components/settings/panes/ProfileExtensions.tsx`);
   const lazyOverlays = `\0ardia-lazy:${browser}components/extensions/ExtensionOverlays.tsx`;
   assert.ok(extensionsPane.importedIds.includes(`${linux}SettingsInstallDialog.tsx`), "the Extensions pane hosts its install dialog through the Linux host");
   assert.ok(!extensionsPane.importedIds.includes(lazyOverlays));
-  assert.deepEqual(graph.get(`${linux}SettingsInstallDialog.tsx`)?.importers, [`${browser}components/settings/panes/Extensions.tsx`]);
+  assert.deepEqual(graph.get(`${linux}SettingsInstallDialog.tsx`)?.importers, [`${browser}components/settings/panes/ProfileExtensions.tsx`]);
   assert.ok(graph.get(`${linux}SettingsInstallDialog.tsx`).importedIds.includes(lazyOverlays));
   assert.ok(graph.get(`${linux}SettingsInstallDialog.tsx`).importedIds.includes(`${linux}installRequestSheet.ts`));
 
@@ -191,7 +192,7 @@ test("production graph uses current Linux adapters and one canonical shared stat
   assert.ok(appCommands.importedIds.includes(`${linux}reportProblem.ts`), "Report a Problem from any shared path reaches the Linux entry, which opens the sheet or the issue page");
   assert.ok(!appCommands.importedIds.includes(`${browser}state/report/actions.ts`));
 
-  const passwordsPane = graph.get(`${browser}components/settings/panes/Passwords.tsx`);
+  const passwordsPane = graph.get(`${browser}components/settings/panes/ProfilePasswords.tsx`);
   assert.ok(passwordsPane.importedIds.includes(`${linux}importedPasswordSave.ts`), "the Passwords pane saves imported handles through the Linux adapter");
   assert.ok(!passwordsPane.importedIds.includes(`${browser}state/site/passwords.ts`));
 

@@ -2194,7 +2194,7 @@ test("profiles that share data: records applied through the owner land once in t
 
   S().importHistory(b, [{ url: "https://out.example/", title: "Out", visits: 1, lastVisit: t + 1000 }]);
   S().addBookmark({ profileId: b, url: "https://out.example/", title: "Out" });
-  const history = adapters.historyAdapter(a).extract(() => undefined, [], Date.now(), () => false);
+  const history = adapters.historyAdapter(a).extract(() => undefined, () => false, Date.now(), () => false, () => undefined, () => undefined, () => undefined);
   const bookmarks = adapters.bookmarksAdapter(a).extract(() => undefined, [], Date.now(), () => false);
   assert.deepEqual([...history.values.keys()].sort(), ["h:https://in.example/", "h:https://out.example/"]);
   assert.deepEqual([...bookmarks.values.values()].map((v) => v.u).sort(), ["https://in.example/", "https://out.example/"]);
@@ -2234,7 +2234,8 @@ test("history: an unchanged page's visits are matched in one pass, not each agai
   useBrowser.setState({ history: { "": { list: [{ url, title: "Same", favicon: null, visits: 50, lastVisit: visitTimes.at(-1), visitTimes }], floor: -Infinity, ready: true } } });
   const known = { t: "Same", n: 50, vt: [...visitTimes] };
   const abs = t.mock.method(Math, "abs");
-  const { values } = adapters.historyAdapter("default").extract((key) => (key === `h:${url}` ? known : undefined), () => false, Date.now(), () => true);
-  assert.equal(values.get(`h:${url}`), known);
+  const baseOf = (key) => (key === `h:${url}` ? known : undefined);
+  const { values } = adapters.historyAdapter("default").extract(baseOf, () => false, Date.now(), () => true, () => undefined, () => undefined, (key) => (baseOf(key) ? JSON.stringify(baseOf(key)) : undefined));
+  assert.deepEqual(values.get(`h:${url}`), known);
   assert.ok(abs.mock.callCount() <= visitTimes.length, `${abs.mock.callCount()} comparisons`);
 });

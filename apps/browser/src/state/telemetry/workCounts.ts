@@ -1,5 +1,6 @@
 import type { Adapter } from "../../platform/sync";
 import { isSharing, useTelemetry } from "./choice";
+import { takePopupProtectedMediaCounts } from "./popupProtectedMedia";
 
 export type SyncWorkKind = "bookmark" | "history";
 type Phase = "extract" | "apply";
@@ -107,4 +108,4 @@ export function takeLiveWorkCounts() {
   };
 }
 
-export const takeWorkCounts = () => ({ ...takeSyncWorkCounts(), ...takeLiveWorkCounts() });
+export const takeWorkCounts = () => ({ ...takeSyncWorkCounts(), ...takeLiveWorkCounts(), ...takePopupProtectedMediaCounts() });
