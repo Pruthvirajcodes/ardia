@@ -125,7 +125,7 @@ const shortcuts = [
   ["⇧⌘Z", cmd("Z", 6, "shift"), { title: "Redo" }, "⇧⌘Z"],
   ["⌘X", cmd("x", 7), { title: "Cut" }, "⌘X", "clipboard"],
   ["⌘C", cmd("c", 8), { title: "Copy" }, "⌘C", "clipboard"],
-  ["⇧⌘C", cmd("C", 8, "shift"), { command: "copyUrl" }, "⇧⌘C"],
+  ["⇧⌘C", cmd("C", 8, "shift"), { command: "copyUrl" }, "⇧⌘C", "devtools-own"],
   ["⌥⇧⌘C", cmd("C", 8, "shift", "option"), { command: "copyUrlAsMarkdown" }, "⌥⇧⌘C"],
   ["⌘V", cmd("v", 9), { title: "Paste" }, "⌘V", "clipboard"],
   ["⇧⌘V", cmd("V", 9, "shift"), { title: "Paste and Match Style" }, "⇧⌘V", "clipboard"],
@@ -536,6 +536,36 @@ await ac(`ac.store.getState().updateSettings({ newTabOpens: "page" }); return 1;
 }
 {
   await resetToPageField("", [0, 0]);
+  const cleared = await devWindow("hoverProbe:responderNil:1");
+  await devWindow("hoverProbe:check:60,135,click");
+  await sleep(600);
+  const healed = await devWindow("hoverProbe:responderNil:0");
+  const episodes = JSON.parse(await devWindow("hoverProbe")).emitted;
+  const last = episodes[episodes.length - 1] ?? {};
+  check("a key window left with no first responder gets the page back on the next click",
+    cleared === "responder window, lost 1" && /^responder (?!nil|window)\w+, lost 0$/.test(healed) &&
+      last.reason === "responderLost" && last.healed === true && last.healWorked === true,
+    `cleared "${cleared}", healed "${healed}", episode ${JSON.stringify(last)}`);
+}
+{
+  await resetToPageField("", [0, 0]);
+  await devWindow("hoverProbe:watch:1");
+  const seen = Math.max(0, ...JSON.parse(await devWindow("hoverProbe")).emitted.map((e) => e.episode));
+  const cleared = await devWindow("hoverProbe:responderNil:1");
+  const click = await ac(`return ac.shell.devClick("w1", { in: "page", x: 60, y: 135, wait: 700 });`);
+  const after = await devWindow("hoverProbe:responderNil:0");
+  const state = JSON.parse(await devWindow("hoverProbe"));
+  await devWindow("hoverProbe:watch:0");
+  const fresh = state.emitted.filter((e) => e.episode > seen);
+  const pageOnClick = click.firstResponderOnClick === "RenderWidgetHostViewCocoa";
+  const healedOnce = fresh.length === 1 && fresh[0].reason === "responderLost" && fresh[0].trigger === "click" && fresh[0].healed === true && fresh[0].healWorked === true;
+  check("a real click on the page with no first responder leaves the page as first responder, through the click watch",
+    state.watching === true && cleared === "responder window, lost 1" && !click.error && /^responder (?!nil|window)\w+, lost 0$/.test(after) &&
+      (pageOnClick ? fresh.length === 0 : healedOnce),
+    `cleared "${cleared}", click ${JSON.stringify(click)}, after "${after}", episodes ${JSON.stringify(fresh)}`);
+}
+{
+  await resetToPageField("", [0, 0]);
   await clipboard.set("first");
   await cdp("?t3", "(window.slowShortcuts ??= addEventListener('keydown', (e) => { if (e.metaKey) { const t = performance.now(); while (performance.now() - t < 200); } }, true), true)");
   await postKeys([keyPress("f", 3), keyPress("v", 9), keyPress("q", 12, 300, [])]);
@@ -708,6 +738,29 @@ await sleep(1000);
   check("New Tab rebound to ⌃⌥⌘K: the new keys are reserved and ⌘T goes to the page", by === "ardia.command.newTab" && !old, `⌃⌥⌘K ${by || "page"}, ⌘T ${old || "page"}`);
   await ac(`const { newTab, ...rest } = ac.store.getState().settings.shortcuts; ac.store.getState().updateSettings({ shortcuts: rest }); return 1;`);
   for (let i = 0; i < 30 && !(await reservedBy(cmd("t", 17))); i++) await sleep(100);
+}
+{
+  const optionC = K("c", 8, "option"), copyUrlKeys = cmd("C", 8, "shift");
+  await ac(`ac.store.getState().updateSettings({ shortcuts: { ...ac.store.getState().settings.shortcuts, copyUrl: ["c", "option"] } }); return 1;`);
+  let by = "", old = "x";
+  for (let i = 0; i < 30 && (by !== "ardia.command.copyUrl" || old); i++) {
+    await sleep(100);
+    [by, old] = [await reservedBy(optionC), await reservedBy(copyUrlKeys)];
+  }
+  check("Copy URL rebound to ⌥C: the Option-only keys are reserved and ⇧⌘C goes to the page", by === "ardia.command.copyUrl" && !old, `⌥C ${by || "page"}, ⇧⌘C ${old || "page"}`);
+  const url = await activeUrl();
+  await clipboard.set("before ⌥C");
+  await swallowKeys();
+  const r = await press(optionC, { focus: "page", asKey: true, send: true, wait: 600 });
+  const seen = await pageKeys(), copied = await clipboard.get();
+  const harness = r.error ? `harness: ${r.error}; ` : r.lostEvents ? "harness: a key event never came back from the app's event queue; " : r.keyWindow !== true ? "harness not key: NSApp.keyWindow wasn't the pressed window; " : "";
+  check(
+    "⌥C sent through AppKit to a page that cancels every keydown: Copy URL copies the page's address and the page gets no keydown",
+    !harness && (r.fired ?? []).some((f) => same(f, { command: "copyUrl" })) && copied === url && seen === 0,
+    `${harness}${describe(r)}, clipboard ${JSON.stringify(copied)} (page ${JSON.stringify(url)}), the page saw ${seen} keydown`,
+  );
+  await ac(`const { copyUrl, ...rest } = ac.store.getState().settings.shortcuts; ac.store.getState().updateSettings({ shortcuts: rest }); return 1;`);
+  for (let i = 0; i < 30 && !(await reservedBy(copyUrlKeys)); i++) await sleep(100);
 }
 {
   const fullScreenKey = cmd("f", 3, "control");

@@ -13,6 +13,7 @@ import type { BrowserWindow, ClosedWindow, ParkedPins, SplitView, Tab } from "..
 import { downloadSession, withoutRepeats } from "../downloads/downloadsSlice";
 import { anyDownloadProgress, withLiveProgress } from "../downloads/progress";
 import { noteDownloadHistoryWrite } from "../telemetry/downloadWork";
+import { noteSavedTopAppsMerged } from "../telemetry/topAppsSharing";
 import { parseSaved, versionedJson, unchanged, type Migrations, type SavedObject } from "../../lib/savedDocument";
 import { sessionWithCleanUpMinutes } from "../settings/cleanUpAfter";
 import { parseSettingsMeta, sessionWithNewTabLinksInLittleArdia, sessionWithSettingsMeta, sessionWithUnreadCountsOffByDefault } from "../settings/settings";
@@ -307,6 +308,7 @@ export function startPersistence(overrides: LaunchOverrides = {}) {
   const loaded = loadSession(overrides);
   restoredAtLaunch = !!loaded?.windowOrder?.length;
   realignedAtLaunch = loaded?.windowsAgainstAutoHideTabs ?? 0;
+  noteSavedTopAppsMerged(loaded?.topAppsMerged ?? "");
   useBrowser.getState().hydrate(loaded ?? {});
   restoreLaunchLook();
 

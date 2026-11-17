@@ -9,6 +9,7 @@ export type EngineInfo = {
   popupWindows: number;
   chromeWindows: number;
   focus?: string;
+  pictureInPictureCloses?: string;
 };
 
 export type EngineComponent = {
@@ -62,7 +63,7 @@ type CliServer = { connections: number; generation: number; file: string; reason
 export type PopupProtectedMedia = { family: "widevine" | "playready" | "fairplay" | "other" | "none"; listed: boolean };
 
 export type HoverLostEpisode = {
-  reason: "halfActive" | "staleMenu" | "notKeyOrMain" | "coveredByView" | "responderLost";
+  reason: "halfActive" | "staleMenu" | "notKeyOrMain" | "coveredByView" | "responderLost" | "coveredByWindow";
   trigger: "move" | "click";
   keyWindow: string;
   mainWindow: string;
@@ -77,12 +78,29 @@ export type HoverLostEpisode = {
   overPage: boolean;
   cover: "none" | "reactNative" | "chromium" | "other";
   coverClear: boolean;
+  responder?: "none" | "window" | "otherWindow" | "page" | "control";
+  coverWindow?: string;
   healed: boolean;
   healWorked: boolean | null;
   endedBy: "hover" | "heal" | "appInactive" | "windowClosed";
   seconds: number;
   episode: number;
 };
+
+export type WindowUnpaintedRecord = {
+  window: "regular" | "private";
+  trigger: "seen" | "key";
+  seen: boolean;
+  occlusion: "visible" | "occluded";
+  overruled: boolean;
+  appActive: boolean;
+  windows: number;
+  views: number;
+  unpainted: number;
+  reasons: number;
+};
+
+export type PressLoopLongReport = { loop: string; inner: string; open: boolean; buttonsHeld: boolean };
 
 export type CliTabTarget = { targetId: string | null; pageGeneration: number };
 

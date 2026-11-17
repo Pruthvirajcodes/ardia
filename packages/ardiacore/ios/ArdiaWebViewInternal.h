@@ -238,6 +238,8 @@ typedef NS_ENUM(NSInteger, ArdiaTransfer) {
 - (void)requestFocusRestore;
 - (void)requestFocusRestoreIn:(NSWindow *)window;
 - (void)restoreFocusIfDue;
+- (BOOL)focusRememberedDevToolsIn:(NSWindow *)window;
+- (void)focusAfterLingeringPane;
 - (void)settleFirstShowFocus;
 - (void)focusAfterLoad;
 @end
@@ -271,6 +273,7 @@ typedef NS_ENUM(NSInteger, ArdiaTransfer) {
 @interface ArdiaWebView (PictureInPictureInternal)
 - (void)traceManualPictureInPicture:(NSString *)what;
 - (void)traceAutoPictureInPicture:(NSString *)what;
+- (void)notePictureInPictureSight:(NSString *)what;
 - (void)awaitPictureInPicture:(int)tries completion:(void (^)(BOOL))completion;
 - (void)updateAutoPictureInPicture;
 - (BOOL)leftAppInPictureInPicture;
@@ -350,6 +353,7 @@ NSPoint RootPointFromWindow(NSWindow *window, NSPoint inWindow);
 NSRect RootRectFromWindow(NSWindow *window, NSRect inWindow);
 CGFloat RootPointsPerLocalPoint(NSView *view);
 BOOL MayHoldUserActivation(NSWindow *window);
+BOOL TakeShiftClick(ArdiaWebView *view);
 
 void InstallControlPressMonitor();
 BOOL TracingPictureInPicture();
