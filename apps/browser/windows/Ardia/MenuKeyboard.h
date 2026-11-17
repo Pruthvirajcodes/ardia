@@ -516,9 +516,22 @@ struct MenuKeyboard {
 
   std::optional<MenuPageReturn> PageTheMenuPressLeft(HWND owner) noexcept {
     HWND page = WindowManager::Shared().TakePageLeftBySecondaryPress(owner, MenuPressToMenuMs);
-    if (!page || GetForegroundWindow() != owner) return std::nullopt;
+    HWND foreground = GetForegroundWindow();
+    if (!page || foreground != owner) {
+      WindowManager::LogPageFocus(L"menu return: owner " + WindowManager::PageFocusWindow(owner) + L" page " + WindowManager::PageFocusWindow(page) +
+                                  L" foreground " + WindowManager::PageFocusWindow(foreground) + L" -> rejected: " +
+                                  (page ? L"the owner is not in front" : L"no page was taken"));
+      return std::nullopt;
+    }
     ActiveWindow host = HostOfPage(page);
-    if (host.hwnd != owner) return std::nullopt;
+    if (host.hwnd != owner) {
+      WindowManager::LogPageFocus(L"menu return: owner " + WindowManager::PageFocusWindow(owner) + L" page " + WindowManager::PageFocusWindow(page) +
+                                  L" page owner " + WindowManager::PageFocusWindow(GetWindow(page, GW_OWNER)) + L" host " +
+                                  WindowManager::PageFocusWindow(host.hwnd) + L" -> rejected: the page's host is not the owner");
+      return std::nullopt;
+    }
+    WindowManager::LogPageFocus(L"menu return: owner " + WindowManager::PageFocusWindow(owner) + L" page " + WindowManager::PageFocusWindow(page) +
+                                L" -> accepted");
     return MenuPageReturn{page, owner, host.id};
   }
 

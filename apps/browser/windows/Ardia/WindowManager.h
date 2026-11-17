@@ -513,9 +513,33 @@ struct WindowManager {
 
   HWND TakePageLeftBySecondaryPress(HWND app, ULONGLONG withinMs) noexcept {
     PageLeft left = m_pageLeftBySecondaryPress;
-    ClearPageLeftBySecondaryPress();
+    ClearPageLeftBySecondaryPress(L"taken by a menu");
+    LogPageFocusTake(app, left, withinMs);
     if (!app || left.app != app || !left.releasedAt || GetTickCount64() - left.releasedAt > withinMs) return nullptr;
     return left.page;
+  }
+
+  static std::wstring PageFocusHandle(void const *handle) {
+    wchar_t text[24] = {};
+    swprintf_s(text, L"0x%llx", static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(handle)));
+    return text;
+  }
+
+  static std::wstring PageFocusWindow(HWND hwnd) {
+    if (!hwnd) return L"0x0";
+    wchar_t name[64] = {};
+    if (GetClassNameW(hwnd, name, 64) <= 0) wcscpy_s(name, L"?");
+    DWORD process = 0;
+    DWORD thread = GetWindowThreadProcessId(hwnd, &process);
+    return PageFocusHandle(hwnd) + L"[" + name + L" tid " + std::to_wstring(thread) + L" pid " + std::to_wstring(process) +
+           (IsWindow(hwnd) ? L"" : L" gone") + L"]";
+  }
+
+  static void LogPageFocus(std::wstring const &line) noexcept {
+    try {
+      LaunchLog::Write(L"pagefocus", line);
+    } catch (...) {
+    }
   }
 
  private:
@@ -524,6 +548,56 @@ struct WindowManager {
     HWND page = nullptr;
     ULONGLONG releasedAt = 0;
   };
+
+  void LogPageFocusTake(HWND app, PageLeft const &left, ULONGLONG withinMs) noexcept {
+    try {
+      ULONGLONG now = GetTickCount64();
+      std::wstring_view verdict = !app                                ? L"rejected: no menu owner"
+                                  : !left.app                         ? L"rejected: nothing was captured"
+                                  : left.app != app                   ? L"rejected: captured for another window"
+                                  : !left.releasedAt                  ? L"rejected: the secondary release was never seen"
+                                  : now - left.releasedAt > withinMs ? L"rejected: the release is too old"
+                                                                      : L"accepted";
+      LogPageFocus(L"take: menu owner " + PageFocusWindow(app) + L" captured app " + PageFocusWindow(left.app) + L" page " +
+                   PageFocusWindow(left.page) + L" releasedAt " + std::to_wstring(left.releasedAt) + L" now " + std::to_wstring(now) +
+                   L" age " + (left.releasedAt ? std::to_wstring(now - left.releasedAt) : std::wstring{L"-"}) + L" within " +
+                   std::to_wstring(withinMs) + L" secondaryDown " + std::to_wstring(SecondaryButtonDown()) + L" foreground " +
+                   PageFocusWindow(GetForegroundWindow()) + L" ui tid " + std::to_wstring(GetCurrentThreadId()) + L" -> " +
+                   std::wstring{verdict});
+    } catch (...) {
+    }
+  }
+
+  void LogPageFocusClear(std::wstring_view reason) noexcept {
+    try {
+      PageLeft const &left = m_pageLeftBySecondaryPress;
+      if (!left.app && !m_secondaryPressHook) return LogPageFocus(L"clear (" + std::wstring{reason} + L"): nothing was held");
+      LogPageFocus(L"clear (" + std::wstring{reason} + L"): app " + PageFocusWindow(left.app) + L" page " + PageFocusWindow(left.page) +
+                   L" releasedAt " + std::to_wstring(left.releasedAt) + L" hook " + PageFocusHandle(m_secondaryPressHook) +
+                   L" callbacks " + std::to_wstring(m_secondaryPressCallbacks) + L" moves " + std::to_wstring(m_secondaryPressMoves));
+    } catch (...) {
+    }
+  }
+
+  void LogPageFocusCallback(int code, WPARAM message, LPARAM data) noexcept {
+    try {
+      ++m_secondaryPressCallbacks;
+      bool move = message == WM_MOUSEMOVE || message == WM_NCMOUSEMOVE;
+      if (move && ++m_secondaryPressMoves > 3) return;
+      std::wstring line = L"hook callback " + std::to_wstring(m_secondaryPressCallbacks) + L": code " + std::to_wstring(code) +
+                          L" message " + PageFocusHandle(reinterpret_cast<void const *>(message));
+      if (code >= 0 && data) {
+        auto const *mouse = reinterpret_cast<MOUSEHOOKSTRUCT const *>(data);
+        line += L" hwnd " + PageFocusWindow(mouse->hwnd) + L" hit " + std::to_wstring(mouse->wHitTestCode) + L" at " +
+                std::to_wstring(mouse->pt.x) + L"," + std::to_wstring(mouse->pt.y);
+      }
+      line += L" secondaryDown " + std::to_wstring(SecondaryButtonDown()) + L" candidate app " +
+              PageFocusHandle(m_pageLeftBySecondaryPress.app) + L" page " + PageFocusHandle(m_pageLeftBySecondaryPress.page) +
+              L" releasedAt " + std::to_wstring(m_pageLeftBySecondaryPress.releasedAt) + L" tid " + std::to_wstring(GetCurrentThreadId());
+      LogPageFocus(line);
+    } catch (...) {
+    }
+  }
 
   static constexpr UINT_PTR kSubclassId = 0xA2D1A;
   static constexpr double kPopupMinWidth = 200;
@@ -898,7 +972,7 @@ struct WindowManager {
   void Closed(std::string const &id) noexcept {
     auto found = m_windows.find(id);
     if (found == m_windows.end()) return;
-    if (m_pageLeftBySecondaryPress.app == found->second.hwnd) ClearPageLeftBySecondaryPress();
+    if (m_pageLeftBySecondaryPress.app == found->second.hwnd) ClearPageLeftBySecondaryPress(L"its window closed");
     RemoveWindowSubclass(found->second.hwnd, &WindowManager::WindowProc, kSubclassId);
     auto closedWindow = found->second.window;
     auto exits = std::move(found->second.exits);
@@ -953,11 +1027,24 @@ struct WindowManager {
     } catch (...) {
     }
     bool fromPage = OwnPageWindow(hwnd, previous);
-    ClearPageLeftBySecondaryPress();
+    LogPageFocus(L"activated " + PageFocusWindow(hwnd) + L" previous " + PageFocusWindow(previous) + L" previous owner " +
+                 PageFocusWindow(previous ? GetWindow(previous, GW_OWNER) : nullptr) + L" fromPage " + std::to_wstring(fromPage) +
+                 L" secondaryDown " + std::to_wstring(SecondaryButtonDown()) + L" primaryDown " + std::to_wstring(LeftButtonDown()) +
+                 L" swapped " + std::to_wstring(GetSystemMetrics(SM_SWAPBUTTON) != 0) + L" foreground " + PageFocusWindow(GetForegroundWindow()) +
+                 L" ui tid " + std::to_wstring(GetCurrentThreadId()));
+    ClearPageLeftBySecondaryPress(L"activation");
     if (fromPage && SecondaryButtonDown()) {
       m_pageLeftBySecondaryPress = PageLeft{hwnd, previous, 0};
       m_secondaryPressHook = SetWindowsHookExW(WH_MOUSE, &WindowManager::SecondaryPressProc, nullptr, GetCurrentThreadId());
-      if (!m_secondaryPressHook) ClearPageLeftBySecondaryPress();
+      DWORD hookError = m_secondaryPressHook ? 0 : GetLastError();
+      m_secondaryPressCallbacks = 0;
+      m_secondaryPressMoves = 0;
+      LogPageFocus(L"capture: app " + PageFocusWindow(hwnd) + L" page " + PageFocusWindow(previous) + L" WH_MOUSE hook " +
+                   PageFocusHandle(m_secondaryPressHook) + L" error " + std::to_wstring(hookError) + L" on tid " +
+                   std::to_wstring(GetCurrentThreadId()));
+      if (!m_secondaryPressHook) ClearPageLeftBySecondaryPress(L"the mouse hook could not be set");
+    } else {
+      LogPageFocus(std::wstring{L"no capture: "} + (fromPage ? L"the secondary button was not down" : L"the previous window is not this window's page"));
     }
     winrt::Microsoft::ReactNative::JSValueObject event;
     event["type"] = "focus";
@@ -966,19 +1053,24 @@ struct WindowManager {
     EmitWindow(std::move(event));
   }
 
-  void StopSecondaryPressHook() noexcept {
+  void StopSecondaryPressHook(std::wstring_view reason) noexcept {
     if (!m_secondaryPressHook) return;
-    UnhookWindowsHookEx(m_secondaryPressHook);
+    BOOL unhooked = UnhookWindowsHookEx(m_secondaryPressHook);
+    LogPageFocus(L"hook stopped (" + std::wstring{reason} + L"): " + PageFocusHandle(m_secondaryPressHook) + L" unhooked " +
+                 std::to_wstring(unhooked) + L" callbacks " + std::to_wstring(m_secondaryPressCallbacks) + L" moves " +
+                 std::to_wstring(m_secondaryPressMoves));
     m_secondaryPressHook = nullptr;
   }
 
-  void ClearPageLeftBySecondaryPress() noexcept {
-    StopSecondaryPressHook();
+  void ClearPageLeftBySecondaryPress(std::wstring_view reason) noexcept {
+    LogPageFocusClear(reason);
+    StopSecondaryPressHook(reason);
     m_pageLeftBySecondaryPress = {};
   }
 
   static LRESULT CALLBACK SecondaryPressProc(int code, WPARAM message, LPARAM data) noexcept {
     WindowManager &manager = Shared();
+    manager.LogPageFocusCallback(code, message, data);
     if (code == HC_ACTION) {
       switch (message) {
         case WM_LBUTTONUP:
@@ -987,7 +1079,10 @@ struct WindowManager {
         case WM_NCRBUTTONUP:
           if (!SecondaryButtonDown()) {
             manager.m_pageLeftBySecondaryPress.releasedAt = GetTickCount64();
-            manager.StopSecondaryPressHook();
+            LogPageFocus(L"release seen: releasedAt " + std::to_wstring(manager.m_pageLeftBySecondaryPress.releasedAt));
+            manager.StopSecondaryPressHook(L"the secondary button was released");
+          } else {
+            LogPageFocus(L"release ignored: the secondary button is still down");
           }
           break;
         case WM_LBUTTONDOWN:
@@ -998,7 +1093,7 @@ struct WindowManager {
         case WM_NCRBUTTONDOWN:
         case WM_NCMBUTTONDOWN:
         case WM_NCXBUTTONDOWN:
-          manager.ClearPageLeftBySecondaryPress();
+          manager.ClearPageLeftBySecondaryPress(L"another press " + PageFocusHandle(reinterpret_cast<void const *>(message)));
           break;
         default:
           break;
@@ -1260,7 +1355,13 @@ struct WindowManager {
       manager->m_systemMove = false;
       manager->m_captionPressed = nullptr;
     }
-    if (message == WM_ACTIVATE && LOWORD(wParam) != WA_INACTIVE && DialogParts::BringModalForward(hwnd)) return 0;
+    if (message == WM_ACTIVATE)
+      LogPageFocus(L"WM_ACTIVATE state " + std::to_wstring(LOWORD(wParam)) + L" minimized " + std::to_wstring(HIWORD(wParam)) + L" window " +
+                   PageFocusWindow(hwnd) + L" other " + PageFocusWindow(reinterpret_cast<HWND>(lParam)));
+    if (message == WM_ACTIVATE && LOWORD(wParam) != WA_INACTIVE && DialogParts::BringModalForward(hwnd)) {
+      LogPageFocus(L"activation handed to a modal: " + PageFocusWindow(hwnd));
+      return 0;
+    }
     if (message == WM_ACTIVATE && LOWORD(wParam) != WA_INACTIVE) manager->Activated(hwnd, reinterpret_cast<HWND>(lParam));
     if (message == WM_SIZE && wParam != SIZE_MINIMIZED) manager->ArrangeToClient(hwnd, LOWORD(lParam), HIWORD(lParam));
     if (message == WM_ACTIVATEAPP && wParam == FALSE) {
@@ -1769,6 +1870,8 @@ struct WindowManager {
   std::string m_activeId;
   PageLeft m_pageLeftBySecondaryPress;
   HHOOK m_secondaryPressHook = nullptr;
+  unsigned m_secondaryPressCallbacks = 0;
+  unsigned m_secondaryPressMoves = 0;
   bool m_quitting{false};
   std::optional<SavedPlacement> m_lastPlacement;
   bool m_placementLoaded{false};
