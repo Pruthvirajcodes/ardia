@@ -1474,6 +1474,19 @@ if (Test-Path $checkLog) {
   elseif ([int]$done.Matches[0].Groups[2].Value -gt 0) { $failures += "$($done.Matches[0].Groups[2].Value) self-checks failed" }
   elseif ([int]$done.Matches[0].Groups[1].Value -eq 0) { $failures += "the self-check ran no checks" }
   if (Select-String -Path $checkLog -Pattern "^(js-error|fatal|error) " -Quiet) { $failures += "the self-check log has errors" }
+  if (Select-String -Path $checkLog -Pattern "\[ardia windows\] self-check (pass|FAIL): launch log: " -Quiet) {
+    $raceApp = [System.Collections.Generic.HashSet[int]]::new()
+    $raceEngine = [System.Collections.Generic.HashSet[int]]::new()
+    $raceTorn = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in [System.IO.File]::ReadLines($checkLog)) {
+      if ($line -notmatch "launch[- ]log[- ]race") { continue }
+      if ($line -match "^info \d+ \[ardia windows\] launch log race app (\d{4})$") { [void]$raceApp.Add([int]$Matches[1]) }
+      elseif ($line -match "^engine 0 host call tab\.close launch-log-race-(\d{4})$") { [void]$raceEngine.Add([int]$Matches[1]) }
+      elseif ($line -notmatch "^info \d+ \[ardia windows\] launch log race wrote 3000 app lines and asked the engine for 3000$") { $raceTorn.Add($line) }
+    }
+    Write-Host "Launch log race: $($raceApp.Count) of 3000 app lines and $($raceEngine.Count) of 3000 engine lines whole, $($raceTorn.Count) torn"
+    if ($raceApp.Count -ne 3000 -or $raceEngine.Count -ne 3000 -or $raceTorn.Count) { $failures += "the launch log lost or tore lines the app and the engine wrote at once (#2426): $($raceApp.Count) of 3000 app lines and $($raceEngine.Count) of 3000 engine lines whole; torn: $(($raceTorn | Select-Object -First 3) -join ' | ')" }
+  }
 } else {
   $failures += "the self-check wrote no log"
 }
