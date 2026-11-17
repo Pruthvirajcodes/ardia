@@ -82,15 +82,11 @@ export function unavailableSettingIds(capabilities: LinuxCapabilities, settingId
   const ids = new Set<string>(["general.autoUpdate"]);
   if (!capabilities.defaultBrowser) ids.add("general.defaultBrowser");
   if (!capabilities.launchAtLogin) ids.add("general.openAtLogin");
-  if (!capabilities.thinScrollBars) ids.add("appearance.pageScrollBars");
   if (!capabilities.videoUpscaling) ids.add("tabs.videoUpscaling");
   if (!capabilities.cliControl) for (const id of ["advanced.cliControl", "advanced.cliInstall", "advanced.compactCliPill"]) ids.add(id);
   if (!capabilities.cliInstall) ids.add("advanced.cliInstall");
-  if (!capabilities.commandScrollZoom) ids.add("privacy.commandScrollZoom");
-  if (!capabilities.littleArdiaNewTabLinks) ids.add("general.littleArdiaOpensNewTabLinks");
   if (!capabilities.peekOtherSites) ids.add("tabs.peekLinksToOtherSites");
   if (!capabilities.popupsOpenAsTabs) ids.add("tabs.popupsOpenAsTabs");
-  if (!capabilities.haptics) ids.add("tabs.tabReorderHaptics");
   if (!capabilities.unloadIdleProfiles) ids.add("advanced.unloadProfilesAfter");
   if (!capabilities.blockAutoplayEverywhere) ids.add("privacy.blockAutoplayEverywhere");
   if (!capabilities.linksFromOtherApps) for (const id of ["general.openLinksInLittleArdia", "tabs.appLinksFirst"]) ids.add(id);

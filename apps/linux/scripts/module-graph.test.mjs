@@ -103,7 +103,21 @@ test("production graph uses current Linux adapters and one canonical shared stat
   assert.ok(!app.importedIds.includes(`${browser}components/tabstrip/TopTabStrip.tsx`));
   assert.ok(graph.get(`${linux}TopStripPeekRegion.tsx`).importedIds.includes(`${browser}components/tabstrip/TopTabStrip.tsx`));
 
-  for (const twin of ["lib/platformFeatures", "lib/platformTerms"]) {
+  assert.ok(graph.has(`${browser}lib/platformChrome.windows.ts`), "Linux lays out its window like the Windows build");
+  assert.ok(!graph.has(`${browser}platform/windowControls.ts`) && !graph.has(`${browser}platform/windowControls.windows.ts`), "window buttons reach the Linux host, not a native Windows module");
+  assert.ok(graph.get(`${browser}state/windows/controls.ts`).importedIds.includes(`${linux}hostWindowControls.ts`));
+  const sharedControls = graph.get(`${browser}components/window/WindowControls.tsx`);
+  assert.deepEqual(sharedControls.importers, [`${linux}WindowControls.tsx`], "the shared window buttons are reached only through the Linux wrapper");
+  assert.ok(sharedControls.importedIds.includes(`${linux}captionControls.ts`) && !sharedControls.importedIds.includes(`${browser}state/windows/controls.ts`), "Close goes to the Linux close coordinator once");
+  const controls = graph.get(`${browser}components/window/BrowserWindowControls.tsx`).importedIds;
+  assert.ok(controls.includes(`${linux}clusterAppMenu.ts`) && !controls.includes(`${browser}state/app/appMenu.ts`), "the … beside the window buttons opens Linux's full app menu");
+  for (const importer of ["components/sidebar/Sidebar.tsx", "components/downloads/Downloads.tsx", "components/sidebar/AddressBar.tsx"]) {
+    const imported = graph.get(`${browser}${importer}`).importedIds;
+    assert.ok(imported.includes(`${linux}sidebarHeaderLayout.ts`) && !imported.includes(`${browser}state/windows/layout.ts`), `${importer} keeps the header, and its menu, whenever the window buttons are hidden`);
+  }
+  assert.ok(!graph.has(`${linux}TrafficLights.tsx`));
+
+  for (const twin of ["lib/platformFeatures", "lib/platformTerms", "lib/platformChrome"]) {
     assert.ok(graph.has(`${browser}${twin}.linux.ts`), `${twin} resolves to its .linux twin`);
     assert.ok(!graph.has(`${browser}${twin}.ts`), `the macOS ${twin} stays out of the Linux bundle`);
   }

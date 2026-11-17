@@ -61,12 +61,12 @@ test("the command bar's Dictate button follows the dictation capability: off whi
 });
 
 test("unavailable choices map to exact settings ids and the Engines pane", () => {
-  const ids = ["general.defaultBrowser", "general.openAtLogin", "general.warnBeforeQuitting", "appearance.pageScrollBars", "engines.defaultEngine", "engines.protectedVideo", "search.otherEngines", "advanced.cliControl", "advanced.cliInstall", "advanced.compactCliPill", "advanced.unloadProfilesAfter", "privacy.blockAutoplayEverywhere", "advanced.showFullUrl", "tabs.videoUpscaling", "tabs.autoPictureInPicture"];
-  const unrouted = ["general.littleArdiaOpensNewTabLinks", "general.openLinksInLittleArdia", "privacy.commandScrollZoom", "tabs.appLinksFirst", "tabs.peekLinksToOtherSites", "tabs.popupsOpenAsTabs", "tabs.tabReorderHaptics"];
+  const ids = ["general.defaultBrowser", "general.openAtLogin", "general.warnBeforeQuitting", "engines.defaultEngine", "engines.protectedVideo", "search.otherEngines", "advanced.cliControl", "advanced.cliInstall", "advanced.compactCliPill", "advanced.unloadProfilesAfter", "privacy.blockAutoplayEverywhere", "advanced.showFullUrl", "tabs.videoUpscaling", "tabs.autoPictureInPicture"];
+  const unrouted = ["general.openLinksInLittleArdia", "tabs.appLinksFirst", "tabs.peekLinksToOtherSites", "tabs.popupsOpenAsTabs"];
   const routedRows = { commandScrollZoom: true, littleArdiaNewTabLinks: true, peekOtherSites: true, popupsOpenAsTabs: true, haptics: true, linksFromOtherApps: true };
   const none = linuxCapabilities(fakeHost().host);
-  assert.deepEqual([...unavailableSettingIds(none, ids)].sort(), [...unrouted, "advanced.cliControl", "advanced.cliInstall", "advanced.compactCliPill", "advanced.unloadProfilesAfter", "appearance.pageScrollBars", "engines.defaultEngine", "engines.protectedVideo", "general.autoUpdate", "general.defaultBrowser", "general.openAtLogin", "privacy.blockAutoplayEverywhere", "tabs.videoUpscaling"].sort());
-  for (const [capability, rows] of Object.entries({ commandScrollZoom: ["privacy.commandScrollZoom"], littleArdiaNewTabLinks: ["general.littleArdiaOpensNewTabLinks"], peekOtherSites: ["tabs.peekLinksToOtherSites"], popupsOpenAsTabs: ["tabs.popupsOpenAsTabs"], haptics: ["tabs.tabReorderHaptics"], linksFromOtherApps: ["general.openLinksInLittleArdia", "tabs.appLinksFirst"] })) {
+  assert.deepEqual([...unavailableSettingIds(none, ids)].sort(), [...unrouted, "advanced.cliControl", "advanced.cliInstall", "advanced.compactCliPill", "advanced.unloadProfilesAfter", "engines.defaultEngine", "engines.protectedVideo", "general.autoUpdate", "general.defaultBrowser", "general.openAtLogin", "privacy.blockAutoplayEverywhere", "tabs.videoUpscaling"].sort());
+  for (const [capability, rows] of Object.entries({ peekOtherSites: ["tabs.peekLinksToOtherSites"], popupsOpenAsTabs: ["tabs.popupsOpenAsTabs"], linksFromOtherApps: ["general.openLinksInLittleArdia", "tabs.appLinksFirst"] })) {
     const shown = unavailableSettingIds({ ...none, [capability]: true }, ids);
     assert.deepEqual(unrouted.filter((id) => !shown.has(id)), rows, capability);
   }

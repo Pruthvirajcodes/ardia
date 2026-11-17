@@ -10,6 +10,7 @@ import { profileOpened } from "../profiles/profileLoading";
 import { isPeekTab } from "../peek/peek";
 import { fromSync } from "../pins/pinOrderChoices";
 import { fromLegacy } from "../../lib/legacy";
+import { thisDeviceDetails } from "./deviceDetails";
 import type { BookmarkNode, HistoryEntry } from "../browser/types";
 import { isWebPageUrl } from "../../lib/url";
 import { BOOKMARK, DEVICE, DEVICE_TABS, HISTORY, RECEIVES_TABS, SHARE, bookmarkValue, historyValue, passwordValue, recordId, type BookmarkValue, type DeviceRecord, type DeviceTabs, type HistoryValue, type PasswordValue, type ShareRecord } from "./records";
@@ -26,29 +27,31 @@ export const inTodaysNames = (adapter: Adapter): Adapter => ({
 
 type ShareLink = { syncId: string; enabled: boolean; retire?: boolean };
 
-export function sharedDataAdapter(links: () => Record<string, ShareLink>): Adapter {
+export function sharedDataAdapter(links: () => Record<string, ShareLink>, removed: () => ReadonlySet<string> = () => new Set()): Adapter {
   return {
     prefix: SHARE,
     adoptRemoteOnJoin: true,
     publishAfterPull: true,
-    extract: (_base, _queued, _now, known) => {
+    extract: (_base, _queued, _now, known, remote) => {
       const all = links();
       const synced = (id: string) => !!store().profiles[id] && !!all[id]?.enabled && !all[id]?.retire;
       const values = new Map<string, unknown>();
       for (const [id, link] of Object.entries(all)) {
         const ownerId = store().profiles[id]?.dataId;
-        if (!synced(id) || !ownerId || ownerId === id || !synced(ownerId)) continue;
+        if (!synced(id) || !ownerId || ownerId === id || !all[ownerId] || !store().profiles[ownerId]) continue;
         const key = `${SHARE}${link.syncId}`;
-        if (!known(key)) values.set(key, { o: all[ownerId]!.syncId } satisfies ShareRecord);
+        const removedElsewhere = known(key) && remote(key) === null;
+        if (removedElsewhere || !known(key)) values.set(key, { o: all[ownerId]!.syncId } satisfies ShareRecord);
       }
-      return { values, ignore: (key) => !values.has(key) };
+      const gone = removed();
+      return { values, ignore: (key) => !values.has(key) && !gone.has(key) };
     },
     apply: () => true,
   };
 }
 
 export function deviceAdapter(deviceId: string, name: () => string, retired = false, spaceOrder: () => string[] = () => []): Adapter {
-  const recordOf = (order: string[]): DeviceRecord => ({ n: name(), k: "mac", f: [RECEIVES_TABS], ...(order.length ? { o: order } : {}) });
+  const recordOf = (order: string[]): DeviceRecord => ({ n: name(), k: "mac", f: [RECEIVES_TABS], ...thisDeviceDetails(), ...(order.length ? { o: order } : {}) });
   return {
     prefix: DEVICE,
     extract: () => ({

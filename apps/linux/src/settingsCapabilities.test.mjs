@@ -10,8 +10,8 @@ import * as form from "./settingsForm.tsx";
 import * as engines from "./hostEngines.ts";
 
 const hidden = [
-  "general.defaultBrowser", "general.openAtLogin", "appearance.pageScrollBars", "advanced.cliControl", "advanced.cliInstall", "tabs.videoUpscaling", "privacy.viewData",
-  "privacy.commandScrollZoom", "general.littleArdiaOpensNewTabLinks", "general.openLinksInLittleArdia", "tabs.peekLinksToOtherSites", "tabs.tabReorderHaptics", "tabs.appLinksFirst",
+  "general.defaultBrowser", "general.openAtLogin", "advanced.cliControl", "advanced.cliInstall", "tabs.videoUpscaling", "privacy.viewData",
+  "general.openLinksInLittleArdia", "tabs.peekLinksToOtherSites", "tabs.appLinksFirst",
   "tabs.popupsOpenAsTabs",
 ];
 

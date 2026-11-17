@@ -262,6 +262,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     guard let id = id(of: from), let entry = managed[id] else { return }
     NotificationCenter.default.removeObserver(self, name: nil, object: from)
     entry.window = to
+    if !from.title.isEmpty { to.title = from.title }
     if entry.kind == .small { ArdiaChromeWindowHost.float(forWindowManagers: to) }
     Self.identify(to, id: id, kind: entry.kind)
     if lastPlaced === from { lastPlaced = to }
@@ -289,6 +290,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     controller.view = root
     controller.view.frame = NSRect(origin: .zero, size: size)
     window.contentViewController = controller
+    if settings { ArdiaChromeWindowHost.insetTrafficLights(of: window) }
     InterfaceScale.rootAttached(root)
     window.setContentSize(size)
     window.delegate = self

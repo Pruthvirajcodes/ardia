@@ -144,7 +144,7 @@ function assertTreeWhole(device) {
 }
 
 const OLD_SESSION = (() => {
-  const { cmdClickCreatesTabGroup: _c, tabReorderHaptics: _t, chosen: _x, ...rest } = S().settings;
+  const { cmdClickCreatesTabGroup: _c, optShiftClickOpensInGroup: _t, chosen: _x, ...rest } = S().settings;
   return { ...rest, cleanUpInactiveTabsAfterMinutes: null };
 })();
 const relaunch = (device, settings) =>
@@ -158,17 +158,17 @@ test("settings: what a Mac only has by default isn't sent; nulls from another Ma
   const folder = new Folder();
   const a = new Device("A", folder);
   const b = new Device("B", folder);
-  b.with(() => S().updateSettings({ cmdClickCreatesTabGroup: true, tabReorderHaptics: true, cleanUpInactiveTabsAfterMinutes: 720 }));
+  b.with(() => S().updateSettings({ cmdClickCreatesTabGroup: true, optShiftClickOpensInGroup: true, cleanUpInactiveTabsAfterMinutes: 720 }));
   relaunch(a, OLD_SESSION);
   assert.equal(a.with(() => S().settings.cmdClickCreatesTabGroup), true, "filled in at launch");
   const extraction = a.with(() => settingsAdapter.extract(() => undefined));
   assert.ok(!extraction.values.has("set:cmdClickCreatesTabGroup") && extraction.ignore("set:cmdClickCreatesTabGroup"), "a default filled in abstains");
   assert.ok(!extraction.values.has("set:cleanUpInactiveTabsAfterHours"), "an old session's Never, its default, never published: no say either");
-  const visible = new Map([["set:cmdClickCreatesTabGroup", { v: null }], ["set:tabReorderHaptics", {}], ["set:cleanUpInactiveTabsAfterHours", { v: null }]]);
-  b.with(() => settingsAdapter.apply(visible, ["set:cmdClickCreatesTabGroup", "set:tabReorderHaptics", "set:cleanUpInactiveTabsAfterHours"]));
+  const visible = new Map([["set:cmdClickCreatesTabGroup", { v: null }], ["set:optShiftClickOpensInGroup", {}], ["set:cleanUpInactiveTabsAfterHours", { v: null }]]);
+  b.with(() => settingsAdapter.apply(visible, ["set:cmdClickCreatesTabGroup", "set:optShiftClickOpensInGroup", "set:cleanUpInactiveTabsAfterHours"]));
   b.with(() => {
     assert.equal(S().settings.cmdClickCreatesTabGroup, true);
-    assert.equal(S().settings.tabReorderHaptics, true);
+    assert.equal(S().settings.optShiftClickOpensInGroup, true);
     assert.equal(S().settings.cleanUpInactiveTabsAfterMinutes, null, "Never is a value of its own");
   });
   b.with(() => settingsAdapter.apply(new Map([["set:cmdClickCreatesTabGroup", { v: false }]]), ["set:cmdClickCreatesTabGroup"]));
@@ -254,9 +254,9 @@ test("settings: a session a pre-chosen build saved whole (defaults filled in) do
   assert.equal(a.with(() => S().settings.cmdClickCreatesTabGroup), false);
   assert.equal(b.with(() => S().settings.cmdClickCreatesTabGroup), false);
   await new Promise((r) => setTimeout(r, 20));
-  relaunch(a, { ...whole, cmdClickCreatesTabGroup: false, tabReorderHaptics: false });
+  relaunch(a, { ...whole, cmdClickCreatesTabGroup: false, optShiftClickOpensInGroup: false });
   await syncAll([a, b]);
-  assert.equal(b.with(() => S().settings.tabReorderHaptics), false);
+  assert.equal(b.with(() => S().settings.optShiftClickOpensInGroup), false);
 });
 
 test("settings: a setting from a newer version survives an older Mac's syncs (no deletion)", async () => {
@@ -2079,11 +2079,11 @@ const settingsWithout = (names) => ({
 test("settings received while this Mac ran a version that didn't sync them take effect once it does, and its own choices stay", async () => {
   const folder = new Folder();
   const a = new Device("devA", folder);
-  const b = new Device("devB", folder, { settings: settingsWithout(["selectedTabGlow", "pageScrollBars"]) });
+  const b = new Device("devB", folder, { settings: settingsWithout(["selectedTabGlow", "sidebarTextContrast"]) });
   for (const d of [a, b]) d.with(() => S().createWindow({ url: `https://${d.id}.example/` }));
   await syncAll([a, b]);
-  b.with(() => S().updateSettings({ pageScrollBars: "system" }));
-  a.with(() => S().updateSettings({ selectedTabGlow: "off", pageScrollBars: "thin" }));
+  b.with(() => S().updateSettings({ sidebarTextContrast: "high" }));
+  a.with(() => S().updateSettings({ selectedTabGlow: "off", sidebarTextContrast: "standard" }));
   await syncAll([a, b]);
   assert.equal(b.with(() => S().settings.selectedTabGlow), "full", "the older version leaves it alone");
   assert.ok("set:selectedTabGlow" in b.scopes.app.base && !b.scopes.app.unapplied.includes("set:selectedTabGlow"), "and counts it as applied");
@@ -2093,8 +2093,8 @@ test("settings received while this Mac ran a version that didn't sync them take 
   await syncAll([b, a]);
   assert.equal(b.with(() => S().settings.selectedTabGlow), "off", "the synced value takes effect after the upgrade");
   assert.ok(!b.with(() => S().settingsMeta.chosen.includes("selectedTabGlow")), "as a synced value, not a choice made here");
-  assert.equal(b.with(() => S().settings.pageScrollBars), "system", "a value chosen here stays");
-  assert.equal(a.with(() => S().settings.pageScrollBars), "system", "and goes out as the newer edit");
+  assert.equal(b.with(() => S().settings.sidebarTextContrast), "high", "a value chosen here stays");
+  assert.equal(a.with(() => S().settings.sidebarTextContrast), "high", "and goes out as the newer edit");
   assert.equal((await b.sync()).published, 0, "settled");
 });
 

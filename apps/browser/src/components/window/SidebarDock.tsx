@@ -5,7 +5,7 @@ import { switchOn } from "../../state/app/switches";
 import { useTheme } from "../ui/theme";
 import { curve, useGated } from "../ui/motion";
 import { Panel, reduceMotion, WindowBackdrop, WindowDragRegion } from "../ui";
-import { useSettings, useSidebarSide, useWindowFullScreen, useWindowId } from "../../state/browser/hooks";
+import { useSidebarSide, useWindowFullScreen, useWindowId } from "../../state/browser/hooks";
 import { useSidebarDockState } from "../../state/windows/hooks";
 import { useSidebarWidth } from "../../state/sidebar/hooks";
 import { useCardTopInset, useSidebarControlsRowIn, useToolbarLightsCenter } from "../../state/windows/layout";
@@ -210,9 +210,7 @@ function SidebarDock({
   const windowId = useWindowId();
   const controlsRow = useSidebarControlsRowIn(windowId);
   const moving = useDockMotion((m) => !!m.moving[windowId]);
-  const revealOnHover = useSettings((s) => s.revealTabsOnHover);
   const draggingTab = useTabDrag((d) => d.phase === "tab" && d.windowId === windowId);
-  const edgeOn = revealOnHover || draggingTab;
   const edgeOver = useRef(false);
   const arm = useRef(EDGE_ARMED);
   const windowFullScreen = useRef(false);
@@ -233,7 +231,7 @@ function SidebarDock({
     fullScreenPeekAt.current = null;
     dismissHoverIn(windowId);
   };
-  const peek = usePeek((!open || fullscreen) && !moving && edgeOn, arc, () => edgeOver.current || peekHeld(windowId), closed, opened);
+  const peek = usePeek((!open || fullscreen) && !moving, arc, () => edgeOver.current || peekHeld(windowId), closed, opened);
   const reveal = () => {
     if (arm.current.armed) latestPeek.current.show();
     else noteSidebarPeekRevealHeldBack();
@@ -255,7 +253,7 @@ function SidebarDock({
   const holding = state === "peeking";
   const shown = shownAs(state);
   useLayoutEffect(() => () => dismissHoverIn(windowId), [windowId, shown]);
-  const watching = watchesEdge(state, moving) && (edgeOn || peeking);
+  const watching = watchesEdge(state, moving);
   const nativeHold = edgeWatchWidth(holding, draggingTab, holdWidth, fullscreen ? 0 : frame.inset);
   useEffect(() => {
     if (!watching) return;
@@ -321,7 +319,12 @@ function SidebarDock({
   const layerOpacity = useGated(fade, peek.slide, 1);
   const layerShift = useGated(peeking, peekIn, 0);
   const layer = useMemo(() => ({ opacity: layerOpacity, transform: [{ translateX: layerShift }] }), [layerOpacity, layerShift]);
-  noteSidebarDock(windowId, { peek, open, moving, fullscreen, edgeOn, layer });
+  const restingPeek = peeking && (fullscreen || (!open && !moving));
+  const panelLayer = useMemo(
+    () => ({ opacity: layerOpacity, transform: [{ translateX: restingPeek ? Animated.add(layerShift, -width * outward) : layerShift }] }),
+    [layerOpacity, layerShift, restingPeek, width, outward],
+  );
+  noteSidebarDock(windowId, { peek, open, moving, fullscreen, layer });
   useEffect(() => () => forgetSidebarDock(windowId), [windowId]);
   const panelOn = useRef(new Animated.Value(0)).current;
   useLayoutEffect(() => panelOn.setValue(peeking ? 1 : 0), [panelOn, peeking]);
@@ -332,15 +335,15 @@ function SidebarDock({
     <>
       {strip.current && (
         <View
-          pointerEvents={!open && !fullscreen && edgeOn && !edgeStripOverPage(frame.inset) ? "auto" : "none"}
-          onMouseEnter={edgeOn ? enterStrip : undefined}
-          onMouseLeave={edgeOn ? leaveStrip : undefined}
+          pointerEvents={!open && !fullscreen && !edgeStripOverPage(frame.inset) ? "auto" : "none"}
+          onMouseEnter={enterStrip}
+          onMouseLeave={leaveStrip}
           style={{
             position: "absolute",
             [edgeSide]: 0,
             top: 0,
             bottom: frame.inset,
-            width: !open && !fullscreen && edgeOn ? PEEK_EDGE_STRIP : 0,
+            width: !open && !fullscreen ? PEEK_EDGE_STRIP : 0,
           }}
         />
       )}
@@ -352,10 +355,10 @@ function SidebarDock({
           top: peeking ? peekAt.top : 0,
           bottom: peeking ? peekAt.bottom : 0,
           width,
-          transform: [{ translateX: fullscreen ? -width * outward : slideOut }],
+          transform: [{ translateX: restingPeek ? 0 : fullscreen ? -width * outward : slideOut }],
         }}
       >
-        <Animated.View style={[StyleSheet.absoluteFill, layer]}>
+        <Animated.View style={[StyleSheet.absoluteFill, panelLayer]}>
           {strip.current && (
             <Animated.View
               pointerEvents="none"

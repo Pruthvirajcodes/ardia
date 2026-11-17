@@ -21,6 +21,7 @@ import { settleThemeAdoption, themeChosenHere } from "./syncThemes";
 import { editClock, startEditClock } from "./editClock";
 import { addLinkedProfile, appScopeOf, linkedProfileId, linkProfiles, readyToPair, remoteProfileRecord, sharedDataChain } from "./profileLinks";
 import { summarize } from "./syncSummary";
+import { markDeviceRemoved, markRemoved, settleRemovals, takeSyncedDeviceRemovals, takeSyncedProfileRemovals } from "./profileRemoval";
 import { profileScope } from "./records";
 import { queueSend, sendTargetsIn } from "./sentTabs";
 import { errorText } from "../../lib/errors";
@@ -67,7 +68,7 @@ function noteSnapshot({ snapshotBytes }: { snapshotBytes: number }) {
 }
 
 export function takeSnapshotWrites() {
-  const taken = snapshotWrites;
+  const taken = { ...snapshotWrites, removedProfiles: takeSyncedProfileRemovals(), removedDevices: takeSyncedDeviceRemovals() };
   snapshotWrites = { count: 0, bytes: 0 };
   return taken;
 }
@@ -153,6 +154,7 @@ async function cycleOnce(native: NonNullable<typeof SyncNative>, folder: string,
     } finally {
       await appSettled();
     }
+    settleRemovals(doc, app);
     if (app.joined && readyToPair(doc, app) && !isQuitting()) linkProfiles(doc, app);
     settleThemeAdoption(doc.profiles, app, true);
     let pending = app.pending;
@@ -202,12 +204,8 @@ async function cycleOnce(native: NonNullable<typeof SyncNative>, folder: string,
     clearTimeout(slow);
     save();
     if (doc.enabled) {
-      if (again) {
-        again = false;
-        scheduleSync(0);
-      } else {
-        scheduleSync(CYCLE_MS);
-      }
+      scheduleSync(again ? 0 : CYCLE_MS);
+      again = false;
     }
   }
 }
@@ -356,6 +354,9 @@ export function addRemoteProfile(syncId: string): string | null {
   return shareWith;
 }
 
+export const removeRemoteProfile = (syncId: string): boolean => markRemoved(doc, syncId) && (docChanged(), true);
+export const removeSyncedDevice = (id: string): boolean => markDeviceRemoved(doc, id) && (docChanged(), true);
+
 export function startSync() {
   if (!SyncNative) return;
   load();
@@ -388,7 +389,7 @@ export function startSync() {
   });
   if (__DEV__) {
     (globalThis as { acSync?: object }).acSync = {
-      useSync, syncNow, turnOnSync, enterRecoveryPhrase, stopSync, setTypeSynced, setProfileSynced, setOpenTabsSynced, addRemoteProfile, setSyncFolder, folderInfo,
+      useSync, syncNow, turnOnSync, enterRecoveryPhrase, stopSync, setTypeSynced, setProfileSynced, setOpenTabsSynced, addRemoteProfile, removeRemoteProfile, removeSyncedDevice, setSyncFolder, folderInfo,
       doc: () => doc,
       native: SyncNative,
       get menu(): typeof import("./menu") {

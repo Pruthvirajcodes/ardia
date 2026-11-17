@@ -109,9 +109,6 @@ test("search rows describing reworded panes read as Linux too", () => {
   const rows = read("components/settings/rows/generalRows.ts");
   assert.match(section(rows, "  sync: [", "  tabs: ["), /\bMacs\b|icloud/);
   assert.doesNotMatch(section(general, "  sync: [", "  tabs: ["), /\bMacs?\b|icloud/i);
-  const appearance = read("components/settings/rows/appearanceRows.ts");
-  assert.match(section(appearance, "pageScrollBars: {", "keywords"), /macOS/);
-  assert.doesNotMatch(section(linuxCopy("components/settings/rows/appearanceRows.ts"), "pageScrollBars: {", "keywords"), /macOS/);
   const privacy = read("components/settings/rows/privacyRows.ts");
   assert.match(section(privacy, "passwords: [", "extensions: ["), /Touch ID|keychain/);
   assert.doesNotMatch(section(linuxCopy("components/settings/rows/privacyRows.ts"), "passwords: [", "extensions: ["), /Touch ID|keychain|Keychain|\bMac\b/);
