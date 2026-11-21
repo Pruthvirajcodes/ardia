@@ -1232,6 +1232,7 @@ __define("packages/core/src/omnibox.ts", function (exports, __require) {
   __export(exports, "isJavaScriptUrl", () => isJavaScriptUrl);
   __export(exports, "withoutJavaScriptScheme", () => withoutJavaScriptScheme);
   __export(exports, "fixupUrl", () => fixupUrl);
+  __export(exports, "sameAddress", () => sameAddress);
   __export(exports, "spacedAddressGuess", () => spacedAddressGuess);
   __export(exports, "searchUrlFor", () => searchUrlFor);
   __export(exports, "resolveInput", () => resolveInput);
@@ -1332,13 +1333,15 @@ function spacedAddress(input        )                       {
   if (host.port && (port < 1 || port > 65535)) return null;
   const dotted = name.includes(".") && !/^[\d.]+$/.test(name);
   const ip = name.startsWith("[") || /^(\d{1,3}\.){3}\d{1,3}$/.test(name);
-  const local = name === "localhost" || ip || (!!host.port && !(dotted && (port === 80 || port === 443)));
+  const local = name === "localhost" || ip || (!!host.port && !(dotted && !isLocalHost(name) && (port === 80 || port === 443)));
   if (!dotted && !local) return null;
   const rest = input.slice(host.authority.length);
   const wiki = WIKI_HOST.test(name) && /^\/wiki\/[^\s/?#]/.test(rest);
   const certain = local || wiki || /^[^\s?#]*\?(?:[^\s#]*&)?[^\s#&=]+=/.test(rest);
   return { escaped: input.replace(/ /g, "%20"), certain };
 }
+
+const sameAddress = (a        , b        ) => a.replace(/^[^/?#]*\/\/[^/?#]*/, (origin) => origin.toLowerCase()) === b.replace(/^[^/?#]*\/\/[^/?#]*/, (origin) => origin.toLowerCase());
 
 function spacedAddressGuess(raw        )                {
   const spaced = spacedAddress(raw.trim());
@@ -2758,7 +2761,7 @@ const { NO_BOOKMARKS, poolFor, savedBookmark, savedVisit, tabsOver } = __require
 const { extensionSuggestions } = __require("packages/core/src/extensionRows.ts");
 const { BUILT_IN_ENGINES, searchUrl } = __require("packages/core/src/engines.ts");
 const { matchActions } = __require("packages/core/src/fuzzy.ts");
-const { fixupUrl, hostOf, searchUrlFor, spacedAddressGuess } = __require("packages/core/src/omnibox.ts");
+const { fixupUrl, hostOf, sameAddress, searchUrlFor, spacedAddressGuess } = __require("packages/core/src/omnibox.ts");
 const { matchScore, matchScoreWord, narrowing, parseQuery, remember, TopList } = __require("packages/core/src/pageMatch.ts");
 const { hostLowerOfPage, hostOfPage, hostPart, originOfPage, pageKey, withRootSlash } = __require("packages/core/src/pageText.ts");
 const { globalProviderRows, providerUrl, safeProviderRows } = __require("packages/core/src/providerRows.ts");
@@ -2896,6 +2899,7 @@ function buildSuggestions(raw        , source                  , options        
 
   const search             = { kind: "search", query, url: searchUrl(engine, query), engine: engine.name };
   const typedUrl = fixupUrl(query);
+  const guessedUrl = typedUrl ? null : spacedAddressGuess(query);
   const calc = calculate(query);
   const creates = matchQuickCreate(raw.trimStart());
   const actionRows = query.length >= 4 ? 4 : 2;
@@ -2912,27 +2916,28 @@ function buildSuggestions(raw        , source                  , options        
   else if (target && completion) first = tag(known(target.url) ?? { kind: "page", url: target.url, title: "", favicon: target.favicon }, !websiteFirst && "search_first_inline");
   else if (typedUrl) first = known(typedUrl) ?? { kind: "page", url: typedUrl, title: "", favicon: null };
   else if (extensionMatches.exact) first = extensionMatches.rows[0] ;
-  else if (websiteFirst && best && best.m >= 40 && (!noInline || typedIsPage(best.c.text, q))) first = tag(pageSuggestion(best.c, best.tabId), best.c.renamed && "renamed_tab");
+  else if (!guessedUrl && websiteFirst && best && best.m >= 40 && (!noInline || typedIsPage(best.c.text, q))) first = tag(pageSuggestion(best.c, best.tabId), best.c.renamed && "renamed_tab");
   else first = search;
 
-  const guessedUrl = typedUrl ? null : spacedAddressGuess(query);
-  const openGuess = guessedUrl ? ranked.find((x) => x.tabId && x.c.url === guessedUrl) : undefined;
+  const guessTab = guessedUrl ? source.tabs.find((t) => t.id !== options.currentTabId && sameAddress(t.url, guessedUrl)) : undefined;
+  const guessRow = !guessedUrl ? null : guessTab ? pageSuggestion({ url: guessTab.url, title: guessTab.customTitle || guessTab.title, favicon: guessTab.favicon, visits: 0, bookmarked: false }, guessTab.id) : (known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null });
   out.push(first);
   out.push(search);
-  if (guessedUrl) out.push(tag(openGuess ? pageSuggestion(openGuess.c, openGuess.tabId) : (known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null }), "spaced_address"));
+  if (guessRow) out.push(guessRow);
   if (calc) out.push({ kind: "calc", expression: calc.expression, value: calc.display, url: searchUrl(engine, calc.expression) });
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...extensionMatches.rows);
   out.push(...creates.map(createRow));
   const pageRows = ranked.map((x) => tag(pageSuggestion(x.c, x.tabId), x.c.renamed && "renamed_tab"));
   out.push(...pageRows.slice(0, 3));
-  const engineSite = (row            ) => (out.has(row) ? row : tag(row, "engine_site"));
-  out.push(...(options.remoteSites ?? []).slice(0, 2).map((site)             => known(site.url) ?? engineSite({ kind: "page", url: site.url, title: site.title, favicon: null })));
+  const remoteSites = (options.remoteSites ?? []).slice(0, 2).filter((site) => !guessedUrl || !sameAddress(site.url, guessedUrl));
+  out.push(...remoteSites.map((site)             => known(site.url) ?? tag({ kind: "page", url: site.url, title: site.title, favicon: null }, "engine_site")));
   const providerAt = out.items.length;
   out.push(...remoteRows((text) => searchUrl(engine, text), engine.name));
   out.push(...pageRows.slice(3));
   const providerRows = options.providers?.length ? globalProviderRows(options.providers, out.items) : [];
   const items = providerRows.length ? [...out.items.slice(0, providerAt), ...providerRows, ...out.items.slice(providerAt)] : out.items;
+  if (guessRow && out.items.includes(guessRow)) tag(guessRow, "spaced_address");
   const shownVia = tagged ? viaOf(items, via) : undefined;
   return shownVia ? { items, completion, via: shownVia } : { items, completion };
 }
@@ -3231,9 +3236,6 @@ class Output {
                    limit        ;
   constructor(limit        ) {
     this.limit = limit;
-  }
-  has(row            ) {
-    return this.seen.has(suggestionKey(row));
   }
   push(...rows              ) {
     for (const row of rows) {

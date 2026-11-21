@@ -40,9 +40,6 @@ export class Output {
   constructor(limit: number) {
     this.limit = limit;
   }
-  has(row: Suggestion) {
-    return this.seen.has(suggestionKey(row));
-  }
   push(...rows: Suggestion[]) {
     for (const row of rows) {
       const key = suggestionKey(row);

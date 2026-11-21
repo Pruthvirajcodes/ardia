@@ -7,6 +7,7 @@ import {
   mobileSetSources,
   mobileSuggest,
   mobileSuggestRequest,
+  spacedAddressGuess,
 } from "@ardia/core/src/mobile.ts";
 import { dedupeByLanding, displayHost, landingKey } from "../../lib/url.ts";
 import type { PasteOffer } from "./pasteRow.ts";
@@ -41,6 +42,7 @@ export function suggest(text: string, remote: readonly string[], context: Sugges
   if (!text.trim()) return { rows: [], completion: "" };
   const result = mobileSuggest(text, { remote: [...remote], preference: "website", limit: ROW_LIMIT, now: Date.now(), ...context });
   const rows: TrayRow[] = [];
+  const guess = spacedAddressGuess(text);
   for (const item of result.items) {
     const typedAddress = item.kind === "search" ? mobileResolve(item.query) : null;
     if (item.kind === "search" && typedAddress?.kind === "url") rows.push(addressRow(typedAddress.url));
@@ -53,7 +55,7 @@ export function suggest(text: string, remote: readonly string[], context: Sugges
         key: `p:${item.tabId ?? ""}:${item.url}`,
         kind: "page",
         title: item.title || host,
-        detail: item.tabId ? SWITCH_TO_TAB : item.title ? host : shown.display,
+        detail: item.tabId ? SWITCH_TO_TAB : !item.title && item.url === guess ? shown.display : host,
         url: item.url,
         favicon: item.favicon ?? null,
         tabId: item.tabId ?? null,

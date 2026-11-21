@@ -119,3 +119,10 @@ test("an untitled address row shows its path under the host", () => {
   assert.equal(guess.title, "example.com");
   assert.equal(guess.detail, "example.com/My%20Folder/index.html");
 });
+
+test("an untitled history row still shows only its host", () => {
+  setSources({ tabs: [], history: [{ url: "https://example.com/foo?token=abc", title: "", favicon: null, visits: 5, lastVisit: Date.now() - 1000 }], bookmarks: [] });
+  const row = suggest("foo", [], context).rows.find((r) => r.kind === "page" && r.url === "https://example.com/foo?token=abc");
+  assert.ok(row && row.kind === "page");
+  assert.equal(row.detail, "example.com");
+});

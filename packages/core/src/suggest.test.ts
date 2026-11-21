@@ -588,3 +588,33 @@ test("the escaped address offered below a spaced search is the open tab when one
   const guess = sites.items.find((i) => i.kind === "page" && i.url === url);
   assert.equal(sites.via?.[suggestionKey(guess!)], "spaced_address");
 });
+
+test("a saved page can't outrank the search for a spaced address that could be prose", () => {
+  const history = [{ url: "https://asp.net/wiki/discussion", title: "asp.net/wiki/Core vs Django discussion", favicon: null, visits: 40, lastVisit: now - 1000 }];
+  const { items } = buildSuggestions("asp.net/wiki/Core vs Django", { tabs: [], history }, { now, limit: 2 });
+  assert.equal(items[0]?.kind, "search");
+  assert.equal(items[1]?.kind === "page" && items[1].url, "https://asp.net/wiki/Core%20vs%20Django");
+});
+
+test("the escaped row switches only to a tab at exactly that address, whatever the host's case", () => {
+  const url = "https://example.com/My%20Folder/index.html";
+  const history = [{ url, title: "My Folder", favicon: null, visits: 3, lastVisit: now - 1000 }];
+  const elsewhere = { id: "t1", url: `${url}#tail`, title: "My Folder", customTitle: null, favicon: null };
+  const guess = (text: string, tabs: { id: string; url: string; title: string; customTitle: null; favicon: null }[]) => buildSuggestions(text, { tabs, history }, { now, limit: 2 }).items[1];
+  const fragment = guess("example.com/My Folder/index.html", [elsewhere]);
+  assert.equal(fragment?.kind === "page" && fragment.url, url);
+  assert.equal(fragment?.kind === "page" && fragment.tabId, undefined);
+  const exact = { id: "t2", url, title: "My Folder", customTitle: null, favicon: null };
+  const upper = guess("EXAMPLE.com/My Folder/index.html", [exact]);
+  assert.equal(upper?.kind === "page" && upper.tabId, "t2");
+});
+
+test("the escaped row appears once beside a matching open tab and site suggestion, and keeps its telemetry tag", () => {
+  const url = "https://example.com/My%20Folder/index.html";
+  const tab = { id: "t3", url, title: "My Folder", customTitle: "Renamed", favicon: null };
+  const history = [{ url, title: "My Folder", favicon: null, visits: 2, lastVisit: now - 1000 }];
+  const result = buildSuggestions("example.com/My Folder/index.html", { tabs: [tab], history }, { now, remoteSites: [{ url, title: "My Folder" }] });
+  const rows = result.items.filter((i) => i.kind === "page" && i.url === url);
+  assert.equal(rows.length, 1);
+  assert.equal(result.via?.[suggestionKey(rows[0]!)], "spaced_address");
+});

@@ -91,13 +91,15 @@ function spacedAddress(input: string): SpacedAddress | null {
   if (host.port && (port < 1 || port > 65535)) return null;
   const dotted = name.includes(".") && !/^[\d.]+$/.test(name);
   const ip = name.startsWith("[") || /^(\d{1,3}\.){3}\d{1,3}$/.test(name);
-  const local = name === "localhost" || ip || (!!host.port && !(dotted && (port === 80 || port === 443)));
+  const local = name === "localhost" || ip || (!!host.port && !(dotted && !isLocalHost(name) && (port === 80 || port === 443)));
   if (!dotted && !local) return null;
   const rest = input.slice(host.authority.length);
   const wiki = WIKI_HOST.test(name) && /^\/wiki\/[^\s/?#]/.test(rest);
   const certain = local || wiki || /^[^\s?#]*\?(?:[^\s#]*&)?[^\s#&=]+=/.test(rest);
   return { escaped: input.replace(/ /g, "%20"), certain };
 }
+
+export const sameAddress = (a: string, b: string) => a.replace(/^[^/?#]*\/\/[^/?#]*/, (origin) => origin.toLowerCase()) === b.replace(/^[^/?#]*\/\/[^/?#]*/, (origin) => origin.toLowerCase());
 
 export function spacedAddressGuess(raw: string): string | null {
   const spaced = spacedAddress(raw.trim());

@@ -68,6 +68,7 @@ test("a spaced address opens only when it can't be prose: a wiki path, a named q
     "192.168.1.2/a b": "http://192.168.1.2/a%20b",
     "de.wikipedia.org/wiki/Foo Bar": "https://de.wikipedia.org/wiki/Foo%20Bar",
     "example.com:8080/a b": "https://example.com:8080/a%20b",
+    "printer.local:80/My Folder": "http://printer.local:80/My%20Folder",
   };
   for (const [text, url] of Object.entries(opens)) {
     assert.equal(fixupUrl(text), url, text);
