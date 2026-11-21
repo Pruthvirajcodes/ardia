@@ -144,3 +144,10 @@ test("a remote suggestion at the escaped row's address doesn't add a second row"
   const rows = suggest("example.com#Chapter 2", ["https://EXAMPLE.com:443/#Chapter%202"], context).rows;
   assert.equal(rows.filter((r) => r.kind === "page").length, 1);
 });
+
+test("a tab open at the escaped address and a remote copy of it show as one Switch to Tab row", () => {
+  setSources({ tabs: [{ id: "t2", url: "https://example.com/#Chapter%202", title: "Chapter", favicon: null, lastActiveAt: Date.now() }], history: [], bookmarks: [] });
+  const pages = suggest("example.com#Chapter 2", ["https://example.com/#Chapter%202"], context).rows.filter((r) => r.kind === "page");
+  assert.equal(pages.length, 1);
+  assert.ok(pages[0]?.kind === "page" && pages[0].switchesTab);
+});

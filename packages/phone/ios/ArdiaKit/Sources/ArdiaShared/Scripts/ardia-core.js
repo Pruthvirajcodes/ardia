@@ -1347,7 +1347,7 @@ function addressKey(url        )         {
   const scheme = m[1] .toLowerCase();
   const web = scheme === "http" || scheme === "https";
   const defaultPort = scheme === "https" ? 443 : scheme === "http" ? 80 : -1;
-  const authority = m[2] .toLowerCase().replace(/:(\d+)$/, (port, digits        ) => (!web ? port : Number(digits) === defaultPort ? "" : `:${Number(digits)}`));
+  const authority = m[2] .replace(/[A-Z]+/g, (upper) => upper.toLowerCase()).replace(/:(\d+)$/, (port, digits        ) => (!web ? port : Number(digits) === defaultPort ? "" : `:${Number(digits)}`));
   const rest = web && !m[3] .startsWith("/") ? `/${m[3]}` : m[3] ;
   return `${scheme}://${authority}${rest}`;
 }
@@ -2932,7 +2932,7 @@ function buildSuggestions(raw        , source                  , options        
 
   const savedGuess = guessedUrl ? ranked.find((x) => !x.tabId && sameAddress(x.c.url, guessedUrl)) : undefined;
   const guessTab = guessedUrl ? source.tabs.find((t) => t.id !== options.currentTabId && sameAddress(t.url, guessedUrl)) : undefined;
-  const guessRow = !guessedUrl ? null : guessTab ? pageSuggestion({ url: guessTab.url, title: guessTab.customTitle || guessTab.title, favicon: guessTab.favicon, visits: 0, bookmarked: false }, guessTab.id) : (known(guessedUrl) ?? (savedGuess ? pageSuggestion(savedGuess.c, null) : { kind: "page", url: guessedUrl, title: "", favicon: null }));
+  const guessRow = !guessedUrl ? null : guessTab ? pageSuggestion({ url: guessTab.url, title: guessTab.customTitle || guessTab.title, favicon: guessTab.favicon, visits: 0, bookmarked: false }, guessTab.id) : (known(guessedUrl) ?? (savedGuess ? { ...pageSuggestion(savedGuess.c, null), url: guessedUrl } : { kind: "page", url: guessedUrl, title: "", favicon: null }));
   out.push(first);
   out.push(search);
   if (guessRow) out.push(guessRow);
@@ -2940,7 +2940,7 @@ function buildSuggestions(raw        , source                  , options        
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...extensionMatches.rows);
   out.push(...creates.map(createRow));
-  const pageRows = ranked.map((x) => tag(pageSuggestion(x.c, x.tabId), x.c.renamed && "renamed_tab")).filter((row) => !guessedUrl || row.kind !== "page" || !sameAddress(row.tabId ? (source.tabs.find((t) => t.id === row.tabId)?.url ?? row.url) : row.url, guessedUrl));
+  const pageRows = ranked.map((x) => tag(pageSuggestion(x.c, x.tabId), x.c.renamed && "renamed_tab")).map((row) => (guessedUrl && row.kind === "page" && row.tabId ? { ...row, url: source.tabs.find((t) => t.id === row.tabId)?.url ?? row.url } : row)).filter((row) => !guessedUrl || row.kind !== "page" || !sameAddress(row.url, guessedUrl));
   out.push(...pageRows.slice(0, 3));
   const remoteSites = (options.remoteSites ?? []).slice(0, 2).filter((site) => !guessedUrl || !sameAddress(site.url, guessedUrl));
   out.push(...remoteSites.map((site)             => known(site.url) ?? tag({ kind: "page", url: site.url, title: site.title, favicon: null }, "engine_site")));

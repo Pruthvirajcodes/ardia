@@ -4,7 +4,7 @@ import { PSL_TLDS } from "./tlds.ts";
 import { domainToASCII } from "node:url";
 import { cleanUrl } from "./cleanUrl.ts";
 import { displayHost, hostSpoofReason, punycodeEncode } from "./idn.ts";
-import { breadcrumb, classifyPaste, fixupUrl, resolveInput, spacedAddressGuess, urlForDisplay } from "./omnibox.ts";
+import { breadcrumb, classifyPaste, fixupUrl, resolveInput, sameAddress, spacedAddressGuess, urlForDisplay } from "./omnibox.ts";
 import { displayUrl } from "./suggest.ts";
 
 const GOOGLE = "https://www.google.com/search?q=";
@@ -295,4 +295,11 @@ test("Latin lookalikes of finance domains stay punycode", () => {
   assert.equal(shown("fidélity.com"), ascii("fidélity.com"));
   assert.equal(shown("schwáb.com"), ascii("schwáb.com"));
   assert.equal(shown("bücher.de"), "bücher.de");
+});
+
+test("sameAddress folds only ASCII case in the host, and default ports and the root slash", () => {
+  assert.ok(sameAddress("https://EXAMPLE.com:443#x", "https://example.com/#x"));
+  assert.ok(sameAddress("http://example.com:0080/a", "http://example.com/a"));
+  assert.ok(!sameAddress("https://ΟΣ-example.com/a", "https://ος-example.com/a"));
+  assert.ok(!sameAddress("https://example.com/A", "https://example.com/a"));
 });
