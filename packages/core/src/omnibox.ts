@@ -77,19 +77,25 @@ export function fixupUrl(raw: string): string | null {
 
 type SpacedAddress = { escaped: string; certain: boolean };
 
+const WIKI_HOST = /(^|\.)(wikipedia|wiktionary|wikimedia|wikiquote|wikibooks|wikisource|wikinews|wikiversity|wikivoyage|wikidata|mediawiki)\.org$/;
+
 function spacedAddress(input: string): SpacedAddress | null {
   if (!input.includes(" ") || /[^\S ]/.test(input)) return null;
   const end = input.search(/[/?#]/);
-  if (end <= 0 || input.slice(0, end).includes(" ") || input[end + 1] === " ") return null;
+  if (end <= 0 || input.slice(0, end).includes(" ") || input.startsWith("/ ", end)) return null;
   const host = matchHost(input);
   if (!host) return null;
   const name = host.name.toLowerCase();
   if (KNOWN_SCHEMES.has(name) || name === "javascript") return null;
   const port = Number(host.port.slice(1));
   if (host.port && (port < 1 || port > 65535)) return null;
+  const dotted = name.includes(".") && !/^[\d.]+$/.test(name);
+  const ip = name.startsWith("[") || /^(\d{1,3}\.){3}\d{1,3}$/.test(name);
+  const local = name === "localhost" || ip || (!!host.port && !(dotted && (port === 80 || port === 443)));
+  if (!dotted && !local) return null;
   const rest = input.slice(host.authority.length);
-  const local = !!host.port || name === "localhost" || name.startsWith("[") || /^(\d{1,3}\.){3}\d{1,3}$/.test(name);
-  const certain = local || /^\/wiki\/[^\s/?#]/.test(rest) || /^[^\s?#]*\?(?:[^\s#]*&)?[^\s#&=]+=/.test(rest);
+  const wiki = WIKI_HOST.test(name) && /^\/wiki\/[^\s/?#]/.test(rest);
+  const certain = local || wiki || /^[^\s?#]*\?(?:[^\s#]*&)?[^\s#&=]+=/.test(rest);
   return { escaped: input.replace(/ /g, "%20"), certain };
 }
 

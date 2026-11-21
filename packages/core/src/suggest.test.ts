@@ -576,3 +576,15 @@ test("a spaced address that could be prose searches first, with its escaped URL 
   assert.deepEqual(wiki[0], { kind: "page", url: "https://en.wikipedia.org/wiki/Jim%20Beam", title: "", favicon: null });
   assert.equal(wiki.filter((i) => i.kind === "page").length, 1);
 });
+
+test("the escaped address offered below a spaced search is the open tab when one shows it, and keeps its own telemetry tag", () => {
+  const url = "https://example.com/My%20Folder/index.html";
+  const tab = { id: "t9", url, title: "My Folder", customTitle: null, favicon: null };
+  const { items } = buildSuggestions("example.com/My Folder/index.html", { tabs: [tab], history: [] }, { now, limit: 2 });
+  assert.equal(items[0]?.kind, "search");
+  assert.equal(items[1]?.kind === "page" && items[1].tabId, "t9");
+  assert.equal(buildSuggestions("example.com/My Folder/index.html", { tabs: [tab], history: [] }, { now }).items.filter((i) => i.kind === "page" && i.url === url).length, 1);
+  const sites = buildSuggestions("example.com/My Folder/index.html", { tabs: [], history: [] }, { now, remoteSites: [{ url, title: "My Folder" }] });
+  const guess = sites.items.find((i) => i.kind === "page" && i.url === url);
+  assert.equal(sites.via?.[suggestionKey(guess!)], "spaced_address");
+});

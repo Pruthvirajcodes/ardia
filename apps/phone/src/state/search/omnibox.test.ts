@@ -110,3 +110,12 @@ test("without the native page, as on Android, the tray never shows Browse for Me
   assert.equal(suggest("otter facts", [], context).rows.some((row) => row.kind === "browseForMe"), false);
   assert.equal(suggest("example.com", [], context, new Map(), true).rows.some((row) => row.kind === "browseForMe"), false);
 });
+
+test("an untitled address row shows its path under the host", () => {
+  setSources({ tabs: [], history: [], bookmarks: [] });
+  const rows = suggest("example.com/My Folder/index.html", [], context).rows;
+  const guess = rows.find((row) => row.kind === "page" && row.url === "https://example.com/My%20Folder/index.html");
+  assert.ok(guess && guess.kind === "page");
+  assert.equal(guess.title, "example.com");
+  assert.equal(guess.detail, "example.com/My%20Folder/index.html");
+});

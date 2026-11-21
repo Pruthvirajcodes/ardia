@@ -162,16 +162,18 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   else first = search;
 
   const guessedUrl = typedUrl ? null : spacedAddressGuess(query);
+  const openGuess = guessedUrl ? ranked.find((x) => x.tabId && x.c.url === guessedUrl) : undefined;
   out.push(first);
   out.push(search);
-  if (guessedUrl) out.push(tag(known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null }, "spaced_address"));
+  if (guessedUrl) out.push(tag(openGuess ? pageSuggestion(openGuess.c, openGuess.tabId) : (known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null }), "spaced_address"));
   if (calc) out.push({ kind: "calc", expression: calc.expression, value: calc.display, url: searchUrl(engine, calc.expression) });
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...extensionMatches.rows);
   out.push(...creates.map(createRow));
   const pageRows = ranked.map((x) => tag(pageSuggestion(x.c, x.tabId), x.c.renamed && "renamed_tab"));
   out.push(...pageRows.slice(0, 3));
-  out.push(...(options.remoteSites ?? []).slice(0, 2).map((site): Suggestion => known(site.url) ?? tag({ kind: "page", url: site.url, title: site.title, favicon: null }, "engine_site")));
+  const engineSite = (row: Suggestion) => (out.has(row) ? row : tag(row, "engine_site"));
+  out.push(...(options.remoteSites ?? []).slice(0, 2).map((site): Suggestion => known(site.url) ?? engineSite({ kind: "page", url: site.url, title: site.title, favicon: null })));
   const providerAt = out.items.length;
   out.push(...remoteRows((text) => searchUrl(engine, text), engine.name));
   out.push(...pageRows.slice(3));

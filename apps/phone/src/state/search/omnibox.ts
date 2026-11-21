@@ -53,7 +53,7 @@ export function suggest(text: string, remote: readonly string[], context: Sugges
         key: `p:${item.tabId ?? ""}:${item.url}`,
         kind: "page",
         title: item.title || host,
-        detail: item.tabId ? SWITCH_TO_TAB : host,
+        detail: item.tabId ? SWITCH_TO_TAB : item.title ? host : shown.display,
         url: item.url,
         favicon: item.favicon ?? null,
         tabId: item.tabId ?? null,

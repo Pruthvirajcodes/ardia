@@ -66,6 +66,8 @@ test("a spaced address opens only when it can't be prose: a wiki path, a named q
     "devbox:8080/a b": "http://devbox:8080/a%20b",
     "localhost./a b": "http://localhost./a%20b",
     "192.168.1.2/a b": "http://192.168.1.2/a%20b",
+    "de.wikipedia.org/wiki/Foo Bar": "https://de.wikipedia.org/wiki/Foo%20Bar",
+    "example.com:8080/a b": "https://example.com:8080/a%20b",
   };
   for (const [text, url] of Object.entries(opens)) {
     assert.equal(fixupUrl(text), url, text);
@@ -86,6 +88,9 @@ test("a spaced address opens only when it can't be prose: a wiki path, a named q
     "example.com#a b",
     "example.com:99999/a b",
     "example.com/search?= cats",
+    "asp.net/wiki/Core vs Django",
+    "example.com:443/docs release notes",
+    "example.com:80/a b",
   ]) {
     assert.equal(fixupUrl(text), null, text);
     assert.deepEqual(classifyPaste(text), { kind: "search", query: text }, text);
@@ -98,6 +103,9 @@ test("a spaced address that could be prose searches first and offers its escaped
   assert.equal(spacedAddressGuess("asp.net/core vs django"), "https://asp.net/core%20vs%20django");
   assert.equal(spacedAddressGuess("example.com/My Folder/index.html"), "https://example.com/My%20Folder/index.html");
   assert.equal(spacedAddressGuess("github.com/nodejs/node release notes"), "https://github.com/nodejs/node%20release%20notes");
+  assert.equal(spacedAddressGuess("asp.net/wiki/Core vs Django"), "https://asp.net/wiki/Core%20vs%20Django");
+  assert.equal(spacedAddressGuess("example.com:443/docs release notes"), "https://example.com:443/docs%20release%20notes");
+  assert.equal(spacedAddressGuess("example.com# Chapter 2"), "https://example.com#%20Chapter%202");
   for (const text of ["en.wikipedia.org/wiki/Jim Beam", "x.com/ cats", "x.com cats", "AC/DC songs", "foo.notatld/a/b c", "example.com:99999/a b", "javascript:123/a b", "example.com/a\tb"]) {
     assert.equal(spacedAddressGuess(text), null, text);
   }

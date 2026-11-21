@@ -444,9 +444,10 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   else first = search;
 
   const guessedUrl = typedUrl ? null : spacedAddressGuess(query);
+  const openGuess = guessedUrl ? ranked.find((x) => x.tabId && x.c.url === guessedUrl) : undefined;
   out.push(first);
   out.push(search);
-  if (guessedUrl) out.push(known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null });
+  if (guessedUrl) out.push(openGuess ? pageSuggestion(openGuess.c, openGuess.tabId) : (known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null }));
   if (calc) out.push({ kind: "calc", expression: calc.expression, value: calc.display, url: searchUrl(engine, calc.expression) });
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...creates.map(createRow));

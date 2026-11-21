@@ -1318,19 +1318,25 @@ function fixupUrl(raw        )                {
 
                                                            
 
+const WIKI_HOST = /(^|\.)(wikipedia|wiktionary|wikimedia|wikiquote|wikibooks|wikisource|wikinews|wikiversity|wikivoyage|wikidata|mediawiki)\.org$/;
+
 function spacedAddress(input        )                       {
   if (!input.includes(" ") || /[^\S ]/.test(input)) return null;
   const end = input.search(/[/?#]/);
-  if (end <= 0 || input.slice(0, end).includes(" ") || input[end + 1] === " ") return null;
+  if (end <= 0 || input.slice(0, end).includes(" ") || input.startsWith("/ ", end)) return null;
   const host = matchHost(input);
   if (!host) return null;
   const name = host.name.toLowerCase();
   if (KNOWN_SCHEMES.has(name) || name === "javascript") return null;
   const port = Number(host.port.slice(1));
   if (host.port && (port < 1 || port > 65535)) return null;
+  const dotted = name.includes(".") && !/^[\d.]+$/.test(name);
+  const ip = name.startsWith("[") || /^(\d{1,3}\.){3}\d{1,3}$/.test(name);
+  const local = name === "localhost" || ip || (!!host.port && !(dotted && (port === 80 || port === 443)));
+  if (!dotted && !local) return null;
   const rest = input.slice(host.authority.length);
-  const local = !!host.port || name === "localhost" || name.startsWith("[") || /^(\d{1,3}\.){3}\d{1,3}$/.test(name);
-  const certain = local || /^\/wiki\/[^\s/?#]/.test(rest) || /^[^\s?#]*\?(?:[^\s#]*&)?[^\s#&=]+=/.test(rest);
+  const wiki = WIKI_HOST.test(name) && /^\/wiki\/[^\s/?#]/.test(rest);
+  const certain = local || wiki || /^[^\s?#]*\?(?:[^\s#]*&)?[^\s#&=]+=/.test(rest);
   return { escaped: input.replace(/ /g, "%20"), certain };
 }
 
@@ -2910,16 +2916,18 @@ function buildSuggestions(raw        , source                  , options        
   else first = search;
 
   const guessedUrl = typedUrl ? null : spacedAddressGuess(query);
+  const openGuess = guessedUrl ? ranked.find((x) => x.tabId && x.c.url === guessedUrl) : undefined;
   out.push(first);
   out.push(search);
-  if (guessedUrl) out.push(tag(known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null }, "spaced_address"));
+  if (guessedUrl) out.push(tag(openGuess ? pageSuggestion(openGuess.c, openGuess.tabId) : (known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null }), "spaced_address"));
   if (calc) out.push({ kind: "calc", expression: calc.expression, value: calc.display, url: searchUrl(engine, calc.expression) });
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...extensionMatches.rows);
   out.push(...creates.map(createRow));
   const pageRows = ranked.map((x) => tag(pageSuggestion(x.c, x.tabId), x.c.renamed && "renamed_tab"));
   out.push(...pageRows.slice(0, 3));
-  out.push(...(options.remoteSites ?? []).slice(0, 2).map((site)             => known(site.url) ?? tag({ kind: "page", url: site.url, title: site.title, favicon: null }, "engine_site")));
+  const engineSite = (row            ) => (out.has(row) ? row : tag(row, "engine_site"));
+  out.push(...(options.remoteSites ?? []).slice(0, 2).map((site)             => known(site.url) ?? engineSite({ kind: "page", url: site.url, title: site.title, favicon: null })));
   const providerAt = out.items.length;
   out.push(...remoteRows((text) => searchUrl(engine, text), engine.name));
   out.push(...pageRows.slice(3));
@@ -3223,6 +3231,9 @@ class Output {
                    limit        ;
   constructor(limit        ) {
     this.limit = limit;
+  }
+  has(row            ) {
+    return this.seen.has(suggestionKey(row));
   }
   push(...rows              ) {
     for (const row of rows) {
