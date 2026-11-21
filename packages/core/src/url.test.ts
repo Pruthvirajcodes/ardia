@@ -57,6 +57,31 @@ test("fixupUrl opens an address with a space after its host, as Chrome does, and
   assert.deepEqual(classifyPaste("https://a b.com/x"), { kind: "search", query: "https://a b.com/x" });
 });
 
+test("a spaced address opens only when it can't be prose: a deep path, a query, a port, localhost or an IP", () => {
+  const opens = {
+    "en.wikipedia.org/wiki/Jim Beam": "https://en.wikipedia.org/wiki/Jim%20Beam",
+    "github.com/search?q=a b": "https://github.com/search?q=a%20b",
+    "localhost:3000/a b": "http://localhost:3000/a%20b",
+    "[::1]:8080/a b": "http://[::1]:8080/a%20b",
+    "devbox:8080/a b": "http://devbox:8080/a%20b",
+    "localhost./a b": "http://localhost./a%20b",
+    "192.168.1.2/a b": "http://192.168.1.2/a%20b",
+  };
+  for (const [text, url] of Object.entries(opens)) {
+    assert.equal(fixupUrl(text), url, text);
+    assert.deepEqual(classifyPaste(text), { kind: "go", url }, text);
+  }
+  for (const text of ["asp.net/core vs django", "node.js/express vs koa", "x.com/ cats", "x.com/my profile/x", "3.5/5 stars rating", "AC/DC/ songs/", "a/b/c d", "example.com#a b"]) {
+    assert.equal(fixupUrl(text), null, text);
+    assert.deepEqual(classifyPaste(text), { kind: "search", query: text }, text);
+  }
+});
+
+test("Paste and Go still searches a pasted local path with a space, though Enter opens it as a file", () => {
+  assert.deepEqual(classifyPaste("/Users/me/My File.html"), { kind: "search", query: "/Users/me/My File.html" });
+  assert.equal(fixupUrl("/Users/me/My File.html"), "file:///Users/me/My%20File.html");
+});
+
 test("fixupUrl reads the host up to the first / ? or #: one trailing dot, a 1-5 digit port, labels never start or end in a hyphen", () => {
   assert.equal(fixupUrl("example.com./x"), "https://example.com./x");
   assert.equal(fixupUrl("example.com../x"), null);
