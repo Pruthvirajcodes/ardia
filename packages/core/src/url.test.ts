@@ -4,7 +4,7 @@ import { PSL_TLDS } from "./tlds.ts";
 import { domainToASCII } from "node:url";
 import { cleanUrl } from "./cleanUrl.ts";
 import { displayHost, hostSpoofReason, punycodeEncode } from "./idn.ts";
-import { breadcrumb, classifyPaste, fixupUrl, resolveInput, urlForDisplay } from "./omnibox.ts";
+import { breadcrumb, classifyPaste, fixupUrl, resolveInput, spacedAddressGuess, urlForDisplay } from "./omnibox.ts";
 import { displayUrl } from "./suggest.ts";
 
 const GOOGLE = "https://www.google.com/search?q=";
@@ -57,7 +57,7 @@ test("fixupUrl opens an address with a space after its host, as Chrome does, and
   assert.deepEqual(classifyPaste("https://a b.com/x"), { kind: "search", query: "https://a b.com/x" });
 });
 
-test("a spaced address opens only when it can't be prose: a deep path, a query, a port, localhost or an IP", () => {
+test("a spaced address opens only when it can't be prose: a wiki path, a named query key, a port, localhost or an IP", () => {
   const opens = {
     "en.wikipedia.org/wiki/Jim Beam": "https://en.wikipedia.org/wiki/Jim%20Beam",
     "github.com/search?q=a b": "https://github.com/search?q=a%20b",
@@ -71,9 +71,35 @@ test("a spaced address opens only when it can't be prose: a deep path, a query, 
     assert.equal(fixupUrl(text), url, text);
     assert.deepEqual(classifyPaste(text), { kind: "go", url }, text);
   }
-  for (const text of ["asp.net/core vs django", "node.js/express vs koa", "x.com/ cats", "x.com/my profile/x", "3.5/5 stars rating", "AC/DC/ songs/", "a/b/c d", "example.com#a b"]) {
+  for (const text of [
+    "asp.net/core vs django",
+    "asp.net/core/mvc vs django",
+    "github.com/nodejs/node release notes",
+    "example.com/My Folder/index.html",
+    "node.js/express vs koa",
+    "x.com/ cats",
+    "192.168.1.2/ cats",
+    "x.com/my profile/x",
+    "3.5/5 stars rating",
+    "AC/DC/ songs/",
+    "a/b/c d",
+    "example.com#a b",
+    "example.com:99999/a b",
+    "example.com/search?= cats",
+  ]) {
     assert.equal(fixupUrl(text), null, text);
     assert.deepEqual(classifyPaste(text), { kind: "search", query: text }, text);
+  }
+  assert.equal(fixupUrl("javascript:123/a b"), null);
+  assert.deepEqual(classifyPaste("javascript:123/a b"), { kind: "search", query: "123/a b" });
+});
+
+test("a spaced address that could be prose searches first and offers its escaped URL as a guess", () => {
+  assert.equal(spacedAddressGuess("asp.net/core vs django"), "https://asp.net/core%20vs%20django");
+  assert.equal(spacedAddressGuess("example.com/My Folder/index.html"), "https://example.com/My%20Folder/index.html");
+  assert.equal(spacedAddressGuess("github.com/nodejs/node release notes"), "https://github.com/nodejs/node%20release%20notes");
+  for (const text of ["en.wikipedia.org/wiki/Jim Beam", "x.com/ cats", "x.com cats", "AC/DC songs", "foo.notatld/a/b c", "example.com:99999/a b", "javascript:123/a b", "example.com/a\tb"]) {
+    assert.equal(spacedAddressGuess(text), null, text);
   }
 });
 

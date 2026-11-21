@@ -75,23 +75,33 @@ export function fixupUrl(raw: string): string | null {
   return url && !isJavaScriptUrl(url) ? toAppUrl(url) : null;
 }
 
-function spacedAddress(input: string): string | null {
+type SpacedAddress = { escaped: string; certain: boolean };
+
+function spacedAddress(input: string): SpacedAddress | null {
   if (!input.includes(" ") || /[^\S ]/.test(input)) return null;
   const end = input.search(/[/?#]/);
-  if (end <= 0 || input.slice(0, end).includes(" ")) return null;
+  if (end <= 0 || input.slice(0, end).includes(" ") || input[end + 1] === " ") return null;
   const host = matchHost(input);
-  if (!host || KNOWN_SCHEMES.has(host.name.toLowerCase())) return null;
+  if (!host) return null;
   const name = host.name.toLowerCase();
-  const dotted = name.includes(".") && !/^[\d.]+$/.test(name);
-  const local = !!host.port || name === "localhost" || name.startsWith("[") || /^(\d{1,3}\.){3}\d{1,3}$/.test(name);
+  if (KNOWN_SCHEMES.has(name) || name === "javascript") return null;
+  const port = Number(host.port.slice(1));
+  if (host.port && (port < 1 || port > 65535)) return null;
   const rest = input.slice(host.authority.length);
-  const pathShaped = /^\/[^\s/?#]+\//.test(rest) || /^[^\s?#]*\?[^\s#]*=/.test(rest);
-  return local || (dotted && pathShaped) ? input.replace(/ /g, "%20") : null;
+  const local = !!host.port || name === "localhost" || name.startsWith("[") || /^(\d{1,3}\.){3}\d{1,3}$/.test(name);
+  const certain = local || /^\/wiki\/[^\s/?#]/.test(rest) || /^[^\s?#]*\?(?:[^\s#]*&)?[^\s#&=]+=/.test(rest);
+  return { escaped: input.replace(/ /g, "%20"), certain };
+}
+
+export function spacedAddressGuess(raw: string): string | null {
+  const spaced = spacedAddress(raw.trim());
+  return spaced && !spaced.certain ? fixupUrl(spaced.escaped) : null;
 }
 
 function fixup(raw: string): string | null {
   const trimmed = raw.trim();
-  const input = spacedAddress(trimmed) ?? trimmed;
+  const spaced = spacedAddress(trimmed);
+  const input = spaced?.certain ? spaced.escaped : trimmed;
   if (!input || (/\s/.test(input) && !/^([a-z][a-z0-9+.-]*:\/\/|\/[^\s/])/i.test(input))) return null;
   if (/^(about|data|mailto|tel|sms|facetime|view-source):/i.test(input)) return input;
 
@@ -139,7 +149,7 @@ export type PasteAction = { kind: "go"; url: string } | { kind: "search"; query:
 export function classifyPaste(text: string): PasteAction | null {
   const trimmed = withoutJavaScriptScheme(text.trim()).trim();
   if (!trimmed) return null;
-  const url = /\s/.test(trimmed) && !spacedAddress(trimmed) ? null : fixupUrl(trimmed);
+  const url = /\s/.test(trimmed) && !spacedAddress(trimmed)?.certain ? null : fixupUrl(trimmed);
   if (url && !/^(about|data):/i.test(url)) return { kind: "go", url: cleanUrl(url) };
   return { kind: "search", query: trimmed.replace(/\s+/g, " ").slice(0, 2000) };
 }

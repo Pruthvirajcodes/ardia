@@ -1232,6 +1232,7 @@ __define("packages/core/src/omnibox.ts", function (exports, __require) {
   __export(exports, "isJavaScriptUrl", () => isJavaScriptUrl);
   __export(exports, "withoutJavaScriptScheme", () => withoutJavaScriptScheme);
   __export(exports, "fixupUrl", () => fixupUrl);
+  __export(exports, "spacedAddressGuess", () => spacedAddressGuess);
   __export(exports, "searchUrlFor", () => searchUrlFor);
   __export(exports, "resolveInput", () => resolveInput);
   __export(exports, "classifyPaste", () => classifyPaste);
@@ -1315,23 +1316,33 @@ function fixupUrl(raw        )                {
   return url && !isJavaScriptUrl(url) ? toAppUrl(url) : null;
 }
 
-function spacedAddress(input        )                {
+                                                           
+
+function spacedAddress(input        )                       {
   if (!input.includes(" ") || /[^\S ]/.test(input)) return null;
   const end = input.search(/[/?#]/);
-  if (end <= 0 || input.slice(0, end).includes(" ")) return null;
+  if (end <= 0 || input.slice(0, end).includes(" ") || input[end + 1] === " ") return null;
   const host = matchHost(input);
-  if (!host || KNOWN_SCHEMES.has(host.name.toLowerCase())) return null;
+  if (!host) return null;
   const name = host.name.toLowerCase();
-  const dotted = name.includes(".") && !/^[\d.]+$/.test(name);
-  const local = !!host.port || name === "localhost" || name.startsWith("[") || /^(\d{1,3}\.){3}\d{1,3}$/.test(name);
+  if (KNOWN_SCHEMES.has(name) || name === "javascript") return null;
+  const port = Number(host.port.slice(1));
+  if (host.port && (port < 1 || port > 65535)) return null;
   const rest = input.slice(host.authority.length);
-  const pathShaped = /^\/[^\s/?#]+\//.test(rest) || /^[^\s?#]*\?[^\s#]*=/.test(rest);
-  return local || (dotted && pathShaped) ? input.replace(/ /g, "%20") : null;
+  const local = !!host.port || name === "localhost" || name.startsWith("[") || /^(\d{1,3}\.){3}\d{1,3}$/.test(name);
+  const certain = local || /^\/wiki\/[^\s/?#]/.test(rest) || /^[^\s?#]*\?(?:[^\s#]*&)?[^\s#&=]+=/.test(rest);
+  return { escaped: input.replace(/ /g, "%20"), certain };
+}
+
+function spacedAddressGuess(raw        )                {
+  const spaced = spacedAddress(raw.trim());
+  return spaced && !spaced.certain ? fixupUrl(spaced.escaped) : null;
 }
 
 function fixup(raw        )                {
   const trimmed = raw.trim();
-  const input = spacedAddress(trimmed) ?? trimmed;
+  const spaced = spacedAddress(trimmed);
+  const input = spaced?.certain ? spaced.escaped : trimmed;
   if (!input || (/\s/.test(input) && !/^([a-z][a-z0-9+.-]*:\/\/|\/[^\s/])/i.test(input))) return null;
   if (/^(about|data|mailto|tel|sms|facetime|view-source):/i.test(input)) return input;
 
@@ -1379,7 +1390,7 @@ function resolveInput(raw        , search        )         {
 function classifyPaste(text        )                     {
   const trimmed = withoutJavaScriptScheme(text.trim()).trim();
   if (!trimmed) return null;
-  const url = /\s/.test(trimmed) && !spacedAddress(trimmed) ? null : fixupUrl(trimmed);
+  const url = /\s/.test(trimmed) && !spacedAddress(trimmed)?.certain ? null : fixupUrl(trimmed);
   if (url && !/^(about|data):/i.test(url)) return { kind: "go", url: cleanUrl(url) };
   return { kind: "search", query: trimmed.replace(/\s+/g, " ").slice(0, 2000) };
 }
@@ -2741,7 +2752,7 @@ const { NO_BOOKMARKS, poolFor, savedBookmark, savedVisit, tabsOver } = __require
 const { extensionSuggestions } = __require("packages/core/src/extensionRows.ts");
 const { BUILT_IN_ENGINES, searchUrl } = __require("packages/core/src/engines.ts");
 const { matchActions } = __require("packages/core/src/fuzzy.ts");
-const { fixupUrl, hostOf, searchUrlFor } = __require("packages/core/src/omnibox.ts");
+const { fixupUrl, hostOf, searchUrlFor, spacedAddressGuess } = __require("packages/core/src/omnibox.ts");
 const { matchScore, matchScoreWord, narrowing, parseQuery, remember, TopList } = __require("packages/core/src/pageMatch.ts");
 const { hostLowerOfPage, hostOfPage, hostPart, originOfPage, pageKey, withRootSlash } = __require("packages/core/src/pageText.ts");
 const { globalProviderRows, providerUrl, safeProviderRows } = __require("packages/core/src/providerRows.ts");
@@ -2898,8 +2909,10 @@ function buildSuggestions(raw        , source                  , options        
   else if (websiteFirst && best && best.m >= 40 && (!noInline || typedIsPage(best.c.text, q))) first = tag(pageSuggestion(best.c, best.tabId), best.c.renamed && "renamed_tab");
   else first = search;
 
+  const guessedUrl = typedUrl ? null : spacedAddressGuess(query);
   out.push(first);
   out.push(search);
+  if (guessedUrl) out.push(known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null });
   if (calc) out.push({ kind: "calc", expression: calc.expression, value: calc.display, url: searchUrl(engine, calc.expression) });
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...extensionMatches.rows);

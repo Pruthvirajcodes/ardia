@@ -2,7 +2,7 @@ import { findBang, type BangMatch, type BangTable } from "./bangs.ts";
 import { calculate } from "./calculator.ts";
 import { BUILT_IN_ENGINES, searchUrl, type SearchEngine } from "./engines.ts";
 import { matchActions, type ActionCandidate } from "./fuzzy.reference.ts";
-import { fixupUrl, hostOf, urlForDisplay } from "./omnibox.ts";
+import { fixupUrl, hostOf, spacedAddressGuess, urlForDisplay } from "./omnibox.ts";
 import { matchQuickCreate } from "./quickCreate.ts";
 import { scopedSearchUrl, type SearchScope } from "./siteSearch.ts";
 
@@ -443,8 +443,10 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   else if (websiteFirst && best && best.m >= 40 && (!noInline || q === best.c.text.shownLower || q === hostPart(best.c.text.shownLower))) first = pageSuggestion(best.c, best.tabId);
   else first = search;
 
+  const guessedUrl = typedUrl ? null : spacedAddressGuess(query);
   out.push(first);
   out.push(search);
+  if (guessedUrl) out.push(known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null });
   if (calc) out.push({ kind: "calc", expression: calc.expression, value: calc.display, url: searchUrl(engine, calc.expression) });
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...creates.map(createRow));

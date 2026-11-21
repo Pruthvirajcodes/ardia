@@ -4,7 +4,7 @@ import { NO_BOOKMARKS, poolFor, savedBookmark, savedVisit, tabsOver, type Candid
 import { extensionSuggestions } from "./extensionRows.ts";
 import { BUILT_IN_ENGINES, searchUrl } from "./engines.ts";
 import { matchActions } from "./fuzzy.ts";
-import { fixupUrl, hostOf, searchUrlFor } from "./omnibox.ts";
+import { fixupUrl, hostOf, searchUrlFor, spacedAddressGuess } from "./omnibox.ts";
 import { matchScore, matchScoreWord, narrowing, parseQuery, remember, TopList, type Ranked } from "./pageMatch.ts";
 import { hostLowerOfPage, hostOfPage, hostPart, originOfPage, pageKey, type PageText, withRootSlash } from "./pageText.ts";
 import { globalProviderRows, providerUrl, safeProviderRows, type ProviderSection, type ProviderSuggestion } from "./providerRows.ts";
@@ -161,8 +161,10 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   else if (websiteFirst && best && best.m >= 40 && (!noInline || typedIsPage(best.c.text, q))) first = tag(pageSuggestion(best.c, best.tabId), best.c.renamed && "renamed_tab");
   else first = search;
 
+  const guessedUrl = typedUrl ? null : spacedAddressGuess(query);
   out.push(first);
   out.push(search);
+  if (guessedUrl) out.push(known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null });
   if (calc) out.push({ kind: "calc", expression: calc.expression, value: calc.display, url: searchUrl(engine, calc.expression) });
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...extensionMatches.rows);
