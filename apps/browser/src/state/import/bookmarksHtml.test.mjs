@@ -40,12 +40,12 @@ test("a Firefox bookmarks HTML file still empties its Other Bookmarks folder int
   assert.deepEqual(otherBookmarks(), [{ "Menu folder": ["Menu link"] }, "Later", { Reading: ["Essay"] }]);
 });
 
-test("a list the file gives no folder name still lands loose in Other Bookmarks", () => {
+test("an untitled folder no parser marked as a list stays a folder, whatever its date", () => {
   S().hydrate({});
   useBrowser.setState({ bookmarks: { nodes: {} } });
-  const exported = folder("Bookmarks", [folder("", [link("Example", "https://example.org/")])]);
+  const exported = folder("Bookmarks", [folder("", []), folder("", [link("Example", "https://example.org/")])]);
   assert.equal(importBookmarks(P, exported, "HTML File"), 1);
-  assert.deepEqual(otherBookmarks(), ["Example"]);
+  assert.deepEqual(otherBookmarks(), [{ "": [] }, { "": ["Example"] }]);
 });
 
 const fresh = () => {
@@ -81,9 +81,16 @@ const EXPORT = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
     <DT><H3 ADD_DATE="1700000000" LAST_MODIFIED="0"></H3>
     <DL><p>
     </DL><p>
-    <DT><H3 ADD_DATE="1700000000" LAST_MODIFIED="0"></H3>
+    <DT><H3 ADD_DATE="0" LAST_MODIFIED="0"></H3>
+    <DL><p>
+    </DL><p>
+    <DT><H3></H3>
     <DL><p>
         <DT><A HREF="https://kept.example/" ADD_DATE="1700000000">Kept</A>
+    </DL><p>
+    <DT><H3 ADD_DATE="0"></H3>
+    <DL><p>
+        <DT><A HREF="https://zero.example/">Zero</A>
     </DL><p>
     <DL><p>
         <DT><A HREF="https://loose.example/" ADD_DATE="1700000000">Loose</A>
@@ -91,9 +98,9 @@ const EXPORT = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 </DL><p>
 `;
 
-test("through the Windows parser, empty-named folders stay folders and an unnamed list lands loose", () => {
+test("through the Windows parser, empty-named folders stay folders with or without a date, and an unnamed list lands loose", () => {
   fresh();
   const root = bookmarksFromHtml(EXPORT, "bookmarks.html");
-  assert.equal(importBookmarks(P, root, "HTML File"), 2);
-  assert.deepEqual(otherBookmarks(), [{ "": [] }, { "": ["Kept"] }, "Loose"]);
+  assert.equal(importBookmarks(P, root, "HTML File"), 3);
+  assert.deepEqual(otherBookmarks(), [{ "": [] }, { "": [] }, { "": ["Kept"] }, { "": ["Zero"] }, "Loose"]);
 });
