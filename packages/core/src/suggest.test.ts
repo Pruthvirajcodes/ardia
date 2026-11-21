@@ -568,9 +568,10 @@ test("each new path tags its row, so the bar can report which path a pick came f
 });
 
 test("a spaced address that could be prose searches first, with its escaped URL right after", () => {
-  const { items } = buildSuggestions("asp.net/core vs django", { tabs: [], history: [] }, { now });
+  const { items, via } = buildSuggestions("asp.net/core vs django", { tabs: [], history: [] }, { now });
   assert.equal(items[0]?.kind, "search");
   assert.deepEqual(items[1], { kind: "page", url: "https://asp.net/core%20vs%20django", title: "", favicon: null });
+  assert.equal(via?.[suggestionKey(items[1]!)], "spaced_address");
   const wiki = buildSuggestions("en.wikipedia.org/wiki/Jim Beam", { tabs: [], history: [] }, { now }).items;
   assert.deepEqual(wiki[0], { kind: "page", url: "https://en.wikipedia.org/wiki/Jim%20Beam", title: "", favicon: null });
   assert.equal(wiki.filter((i) => i.kind === "page").length, 1);

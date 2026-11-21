@@ -164,7 +164,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   const guessedUrl = typedUrl ? null : spacedAddressGuess(query);
   out.push(first);
   out.push(search);
-  if (guessedUrl) out.push(known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null });
+  if (guessedUrl) out.push(tag(known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null }, "spaced_address"));
   if (calc) out.push({ kind: "calc", expression: calc.expression, value: calc.display, url: searchUrl(engine, calc.expression) });
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...extensionMatches.rows);
