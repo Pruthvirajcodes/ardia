@@ -1,7 +1,7 @@
-import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { memo, useEffect, useSyncExternalStore } from "react";
+import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { tabTitle } from "../../state/browser/model";
-import { useTab } from "../../state/browser/hooks";
+import { useSettings, useTab } from "../../state/browser/hooks";
 import { useSidebarUi } from "../../state/sidebar/sidebarUi";
 import { lastPicture, onPicturesChanged } from "../../state/tabs/tabPictures";
 import { commitSwitcher, hoverSwitcherRow, leaveSwitcherRow, subscribeSwitcherTabChanges } from "../../state/sidebar/switcher";
@@ -9,20 +9,20 @@ import { noteTabSwitcherOverflowClick, noteTabSwitcherOverflowOpened, noteTabSwi
 import { Symbol, Text, Panel } from "../ui";
 import { useTheme } from "../ui/theme";
 import { TabIcon } from "./TabIcon";
-import { revealedOffset } from "./switcherScroll";
+import { TabSwitcherList } from "./TabSwitcherList";
+import { useRevealScroll } from "./useRevealScroll";
 import { SIDEBAR_SHADOW, TAB_SWITCHER as T, TAB_SWITCHER_SCROLL_ID, tabSwitcherColors } from "./tokens";
 
 const SHOT = Math.round(T.card / T.shotAspect);
 const SHOT_WIDTH = T.card - 2 * T.cardInset;
 const ROW_HEIGHT = SHOT + T.label + 2 * T.cardInset;
 const STRIDE = T.card + T.gap;
-const OWN_SCROLL_MS = 120;
-const OWN_ANIMATED_SCROLL_MS = 450;
 
 export function TabSwitcher({ windowId, windowWidth, windowHeight }: { windowId: string; windowWidth: number; windowHeight: number }) {
   const theme = useTheme();
   const pendingSwitcher = useSidebarUi((u) => (u.switcher?.windowId === windowId ? u.switcher : null));
   const switcher = pendingSwitcher?.visible ? pendingSwitcher : null;
+  const style = useSettings((s) => s.tabSwitcherStyle);
 
   useEffect(() => {
     if (!pendingSwitcher) return;
@@ -30,6 +30,7 @@ export function TabSwitcher({ windowId, windowWidth, windowHeight }: { windowId:
   }, [pendingSwitcher?.windowId, windowId]);
 
   if (!switcher) return null;
+  if (style === "list") return <TabSwitcherList ids={switcher.ids} index={switcher.index} windowWidth={windowWidth} windowHeight={windowHeight} />;
   const fits = Math.max(1, Math.floor((windowWidth - T.windowMargin - 2 * T.pad + T.gap) / (T.card + T.gap)));
   const count = Math.min(fits, switcher.ids.length);
   const viewport = count * T.card + (count - 1) * T.gap;
@@ -59,38 +60,11 @@ export function TabSwitcher({ windowId, windowWidth, windowHeight }: { windowId:
 }
 
 function SwitcherRow({ ids, index, viewport, overflows, accent }: { ids: string[]; index: number; viewport: number; overflows: boolean; accent: string }) {
-  const scroll = useRef<ScrollView>(null);
-  const [opening] = useState(() => ({ x: revealedOffset(index, 0, viewport, T.card, STRIDE), y: 0 }));
-  const offset = useRef(opening.x);
-  const placed = useRef(false);
-  const shownIndex = useRef(index);
-  const ownScrollUntil = useRef(0);
-  const wheeled = useRef(false);
-
-  const scrollTo = (x: number, animated: boolean) => {
-    offset.current = x;
-    ownScrollUntil.current = performance.now() + (animated ? OWN_ANIMATED_SCROLL_MS : OWN_SCROLL_MS);
-    scroll.current?.scrollTo({ x, animated });
-  };
+  const { scroll, opening, onContentSizeChange, onScroll } = useRevealScroll({ axis: "x", index, viewport, size: T.card, stride: STRIDE, onWheel: noteTabSwitcherWheelScrolled });
 
   useEffect(() => {
     if (overflows) noteTabSwitcherOverflowOpened();
   }, []);
-
-  useEffect(() => {
-    const moved = shownIndex.current !== index;
-    shownIndex.current = index;
-    if (!placed.current) return;
-    const next = revealedOffset(index, offset.current, viewport, T.card, STRIDE);
-    if (Math.abs(next - offset.current) >= 0.5) scrollTo(next, moved);
-  }, [index, viewport]);
-
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    offset.current = e.nativeEvent.contentOffset.x;
-    if (wheeled.current || performance.now() < ownScrollUntil.current) return;
-    wheeled.current = true;
-    noteTabSwitcherWheelScrolled();
-  };
 
   return (
     <ScrollView
@@ -101,11 +75,7 @@ function SwitcherRow({ ids, index, viewport, overflows, accent }: { ids: string[
       scrollEnabled={overflows}
       scrollEventThrottle={16}
       contentOffset={opening}
-      onContentSizeChange={() => {
-        if (placed.current) return void (ownScrollUntil.current = performance.now() + OWN_SCROLL_MS);
-        placed.current = true;
-        scrollTo(revealedOffset(shownIndex.current, offset.current, viewport, T.card, STRIDE), false);
-      }}
+      onContentSizeChange={onContentSizeChange}
       onScroll={onScroll}
       style={{ margin: T.pad, width: viewport, height: ROW_HEIGHT }}
       contentContainerStyle={{ gap: T.gap }}

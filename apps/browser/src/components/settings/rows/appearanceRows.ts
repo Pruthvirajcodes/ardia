@@ -93,6 +93,11 @@ export const appearanceRows = {
           description: "Step through your tabs in order, or open the recent tabs switcher.",
           keywords: ["ctrl tab", "control tab", "alt tab", "tab switcher", "switch tabs", "switching tabs", "recent tabs", "recently used", "last tab", "previous tab", "next tab", "cycle tabs", "mru", "tabbing", "arc", "dia", "chrome"],
         },
+        tabSwitcherStyle: {
+          title: "Show pages as",
+          description: "In the recent tabs switcher: page pictures in a row, or a list of titles and addresses.",
+          keywords: ["switcher list", "list view", "thumbnails", "switcher pictures", "switcher previews"],
+        },
       },
     },
     {

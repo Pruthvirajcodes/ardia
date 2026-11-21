@@ -1,5 +1,5 @@
-import { Box, Button, space, Text } from "../../ui";
-import { Anchor, FormField, SectionHeader } from "../Form";
+import { Box, Button, PopUp, space, Text, type Option } from "../../ui";
+import { Anchor, FormField, Group, Row, SectionHeader } from "../Form";
 import { PictureChoice } from "../PictureChoice";
 import { CtrlTabPreview } from "../ChoicePreviews";
 import { setting } from "../settingsIndex";
@@ -8,6 +8,9 @@ import type { CtrlTabPreset } from "../../../state/commands/ctrlTabKeys";
 import { PLATFORM_TERMS } from "../../../lib/platformTerms";
 import { setShortcutsQuery } from "../../../state/settings/searchState";
 import { goToSettingsPane } from "../../../state/settings/settingsWindows";
+import { useSettings } from "../../../state/browser/hooks";
+import { updateSettings } from "../../../state/settings/actions";
+import type { Settings } from "../../../state/settings/settings";
 
 const CTRL_TAB_KEY = PLATFORM_TERMS.switchTabsKey;
 
@@ -16,8 +19,14 @@ const CTRL_TAB: { value: CtrlTabPreset; title: string; caption: string }[] = [
   { value: "switcher", title: "Recent tabs switcher", caption: "Shows recent tabs; let go to switch, like Arc." },
 ];
 
+const SWITCHER_STYLES: Option<Settings["tabSwitcherStyle"]>[] = [
+  { value: "pictures", title: "Pictures" },
+  { value: "list", title: "List" },
+];
+
 export function SwitchingTabsSection() {
   const choice = useCtrlTabChoice();
+  const switcherStyle = useSettings((s) => s.tabSwitcherStyle);
   return (
     <>
       <SectionHeader title="Switching tabs" />
@@ -33,6 +42,11 @@ export function SwitchingTabsSection() {
           {choice === "custom" && <CustomCtrlTabNote />}
         </FormField>
       </Anchor>
+      <Group>
+        <Row anchor="appearance.tabSwitcherStyle">
+          <PopUp value={switcherStyle} options={SWITCHER_STYLES} onChange={(v) => updateSettings({ tabSwitcherStyle: v })} minWidth={120} />
+        </Row>
+      </Group>
     </>
   );
 }

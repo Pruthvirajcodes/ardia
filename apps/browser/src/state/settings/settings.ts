@@ -128,6 +128,7 @@ export const SETTING_SPECS = {
   tidyTabs: flag(false, SYNCED),
   balancedTopApps: flag(false, SYNCED),
   selectedTabGlow: oneOf(["full", "soft", "off"], "full", SYNCED),
+  tabSwitcherStyle: oneOf(["pictures", "list"], "pictures", SYNCED),
   interfaceScale: shaped<number>(INTERFACE_SCALE.default, validInterfaceScale, { type: "number", enum: INTERFACE_SCALE_STEPS }),
   sidebarTextSize: oneOf(SIDEBAR_TEXT_SIZES, "default"),
   sidebarTextContrast: oneOf(["auto", "standard", "high"], "auto", SYNCED),

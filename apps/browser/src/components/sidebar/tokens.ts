@@ -1,7 +1,7 @@
 import { Easing } from "react-native";
 import { useTheme } from "../ui/theme";
 import { duration, spring } from "../ui/motion";
-import { font, ink, radius, shadow, sidebarFont, sidebarIconSize, sidebarPoints, space, withAlpha, type ShadowLevel } from "../ui/tokens";
+import { concentric, font, ink, radius, shadow, sidebarFont, sidebarIconSize, sidebarLineHeight, sidebarPoints, space, withAlpha, type ShadowLevel } from "../ui/tokens";
 import type { GroupColor } from "../../state/browser/types";
 import type { Settings } from "../../state/settings/settings";
 import { GROUP_COLORS } from "../../state/groups/tokens";
@@ -122,6 +122,15 @@ export const TAB_SWITCHER = {
   get titleSize() {
     return font.small.fontSize;
   },
+} as const;
+
+export const TAB_SWITCHER_LIST = {
+  width: 400, row: 40, pad: space.m, rowInset: space.ml, rowGap: space.ml, windowMargin: 80,
+  icon: 18, titleHeight: 17, urlHeight: 14, ring: 1, headerTop: space.xxs, headerBottom: space.s,
+  get header() { return space.xxs + sidebarLineHeight.caption + space.s; },
+  get rowRadius() { return concentric(TAB_SWITCHER.panelRadius, space.m); },
+  get titleSize() { return font.body.fontSize; },
+  get urlSize() { return font.caption.fontSize; },
 } as const;
 
 const TAB_SWITCHER_DARK = {

@@ -47,3 +47,22 @@ test("a card cut off by a wheel scroll comes fully into view by the smallest scr
   assert.equal(at(2 + COUNT, offset), (2 + COUNT) * STRIDE + CARD - VIEWPORT);
   assert.equal(at(5, offset), offset);
 });
+
+test("a list of 40 pt rows with no gap scrolls one row at either edge and never while the selection is on screen", () => {
+  const ROW = 40;
+  const rows = 11;
+  const viewport = rows * ROW;
+  const list = (index, offset) => revealedOffset(index, offset, viewport, ROW, ROW);
+  let offset = 0;
+  for (let index = 0; index < rows; index++) offset = list(index, offset);
+  assert.equal(offset, 0);
+  offset = list(rows, offset);
+  assert.equal(offset, ROW);
+  offset = list(15, offset);
+  assert.equal(offset, 5 * ROW);
+  offset = list(14, offset);
+  assert.equal(offset, 5 * ROW);
+  offset = list(4, offset);
+  assert.equal(offset, 4 * ROW);
+  assert.equal(list(15, 0), 5 * ROW);
+});
