@@ -18,9 +18,9 @@ const settle = async () => {
 };
 const host = stub.pluginHost;
 const MIN = 60_000;
-const realNow = Date.now;
+const frozen = Date.now();
 let skew = 0;
-Date.now = () => realNow() + skew;
+Date.now = () => frozen + skew;
 const SOCKET = 7101;
 let nextId = 0;
 after(() => {

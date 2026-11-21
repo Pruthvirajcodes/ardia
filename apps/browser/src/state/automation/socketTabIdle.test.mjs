@@ -7,9 +7,9 @@ const stub = await import("../../test-native/index.ts");
 const S = () => useBrowser.getState();
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const MIN = 60_000;
-const realNow = Date.now;
+const frozen = Date.now();
 let skew = 0;
-Date.now = () => realNow() + skew;
+Date.now = () => frozen + skew;
 function advance(t, ms) {
   skew += ms;
   t.after(() => (skew = 0));
