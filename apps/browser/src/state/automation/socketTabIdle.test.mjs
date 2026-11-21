@@ -189,3 +189,47 @@ test("a tab moved to another profile in the background starts a new idle stretch
   assert.equal(again[0].data.profile, work);
   assert.equal(again[0].data.idleSince, movedAt);
 });
+
+test("replacing a subscription with a new threshold sends nothing at the old one before the reply", async (t) => {
+  const { b, c } = await idleTabs();
+  for (const id of [b, c]) S().updateTab(id, { lastActiveAt: Date.now() - 59_000 });
+  const [listener] = connections(t, 1);
+  subscribe(listener, ["tab.idle"], [60]);
+  const from = stub.controlSocket.broadcasts.length;
+  advance(t, 2_000);
+  subscribe(listener, ["tab.idle"], [120]);
+  assert.deepEqual(idleEvents(listener, from), []);
+});
+
+test("an idle tab selected in a window without focus still resumes once that window is focused", async (t) => {
+  const { b } = await idleTabs();
+  const w = S().tabs[b].windowId;
+  const [listener] = connections(t, 1);
+  subscribe(listener, ["tab.idle", "tab.resumed"], [1800]);
+  S().createWindow({ url: "https://d.com/" });
+  const from = stub.controlSocket.broadcasts.length;
+  S().activate(b);
+  S().setFocusedWindow(w);
+  assert.deepEqual(idleEvents(listener, from), ["tab.resumed https://b.com/ 1800"]);
+});
+
+test("a synced activity time that still leaves the tab idle doesn't send tab.idle again", async (t) => {
+  const { b } = await idleTabs();
+  const [listener, late] = connections(t, 2);
+  subscribe(listener, ["tab.idle"], [60]);
+  S().updateTab(b, { lastActiveAt: Date.now() - 10 * MIN });
+  const from = stub.controlSocket.broadcasts.length;
+  subscribe(late, ["tab.idle"], [60]);
+  assert.deepEqual(idleEvents(listener, from), []);
+  assert.deepEqual(idleEvents(late, from), ["tab.idle https://b.com/ 60", "tab.idle https://c.com/ 60"]);
+});
+
+test("moving an idle tab to another profile in front starts a new stretch without a tab.resumed", async (t) => {
+  const { b } = await idleTabs();
+  const work = S().createProfile({ name: "Work" });
+  const [listener] = connections(t, 1);
+  subscribe(listener, ["tab.idle", "tab.resumed"], [1800]);
+  const from = stub.controlSocket.broadcasts.length;
+  S().moveTabToProfile(b, work);
+  assert.deepEqual(idleEvents(listener, from), []);
+});

@@ -72,7 +72,7 @@ const wantsIdleAt = (sub: Subscription | null | undefined, threshold: number) =>
 
 export function changeSubscription(before: Subscription | null | undefined, after: Subscription | null | undefined, install: () => void): Record<string, unknown>[] {
   const joining = after ? [...after.tabIdle].filter((t) => wantsIdleAt(after, t) && !wantsIdleAt(before, t)) : [];
-  if (joining.length) tabIdle?.catchUp();
+  if (joining.length) tabIdle?.catchUp(joining);
   install();
   return joining.flatMap((t) => tabIdle?.idleNow(t) ?? []);
 }

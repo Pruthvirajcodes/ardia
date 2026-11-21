@@ -129,33 +129,35 @@ function shownTabs(s: BrowserState): Set<string> {
   return shown;
 }
 
-export type TabIdleTracker = { watch: (thresholds: ReadonlySet<number>) => void; catchUp: () => void; idleNow: (threshold: number) => Record<string, unknown>[]; stop: () => void };
+export type TabIdleTracker = { watch: (thresholds: ReadonlySet<number>) => void; catchUp: (thresholds: readonly number[]) => void; idleNow: (threshold: number) => Record<string, unknown>[]; stop: () => void };
+
+type IdleRecord = { since: number; profile: string };
 
 export function startTabIdle(send: EventSend): TabIdleTracker {
-  const idle = new Map<number, Map<string, number>>();
+  const idle = new Map<number, Map<string, IdleRecord>>();
   const touched = new Map<string, number>();
   const idleData = (s: BrowserState, id: string, threshold: number) => ({ ...tabData(s, id), pinned: !!s.tabs[id]!.pin, idle: threshold });
-  const lastActivity = (s: BrowserState, id: string) => Math.max(s.tabs[id]!.lastActiveAt, s.tabs[id]!.restoredAt ?? 0, touched.get(id) ?? 0);
-  const scan = (quietly?: number) => {
+  const stillIdle = (s: BrowserState, id: string, record: IdleRecord) => !!s.tabs[id] && isEligibleTab(s, id) && s.tabs[id]!.profileId === record.profile;
+  const scan = (only?: ReadonlySet<number>, quietly = false) => {
     const s = useBrowser.getState();
     const now = Date.now();
     const shown = shownTabs(s);
     for (const id of shown) touched.set(id, now);
     for (const [threshold, tabs] of idle) {
-      if (quietly !== undefined && threshold !== quietly) continue;
-      for (const [id, since] of tabs) {
-        if (!s.tabs[id] || !isEligibleTab(s, id)) tabs.delete(id);
+      if (only && !only.has(threshold)) continue;
+      for (const [id, record] of tabs) {
+        if (!stillIdle(s, id, record)) tabs.delete(id);
         else if (shown.has(id)) {
           tabs.delete(id);
           send("tab.resumed", idleData(s, id, threshold));
-        } else if (lastActivity(s, id) > since) tabs.delete(id);
+        }
       }
       for (const id in s.tabs) {
         if (tabs.has(id) || shown.has(id) || !isEligibleTab(s, id)) continue;
-        const last = lastActivity(s, id);
+        const last = Math.max(s.tabs[id]!.lastActiveAt, s.tabs[id]!.restoredAt ?? 0, touched.get(id) ?? 0);
         if (now - last >= threshold * 1000) {
-          tabs.set(id, last);
-          if (quietly === undefined) send("tab.idle", { ...idleData(s, id, threshold), idleSince: last });
+          tabs.set(id, { since: last, profile: s.tabs[id]!.profileId });
+          if (!quietly) send("tab.idle", { ...idleData(s, id, threshold), idleSince: last });
         }
       }
     }
@@ -171,13 +173,13 @@ export function startTabIdle(send: EventSend): TabIdleTracker {
       for (const threshold of thresholds) {
         if (idle.has(threshold)) continue;
         idle.set(threshold, new Map());
-        scan(threshold);
+        scan(new Set([threshold]), true);
       }
     },
-    catchUp: () => scan(),
+    catchUp: (thresholds) => scan(new Set(thresholds)),
     idleNow: (threshold) => {
       const s = useBrowser.getState();
-      return [...(idle.get(threshold) ?? [])].filter(([id, since]) => s.tabs[id] && isEligibleTab(s, id) && lastActivity(s, id) <= since).map(([id, since]) => ({ ...idleData(s, id, threshold), idleSince: since }));
+      return [...(idle.get(threshold) ?? [])].filter(([id, record]) => stillIdle(s, id, record)).map(([id, record]) => ({ ...idleData(s, id, threshold), idleSince: record.since }));
     },
     stop: () => {
       clearInterval(timer);
