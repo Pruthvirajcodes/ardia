@@ -99,7 +99,17 @@ function spacedAddress(input: string): SpacedAddress | null {
   return { escaped: input.replace(/ /g, "%20"), certain };
 }
 
-export const sameAddress = (a: string, b: string) => a.replace(/^[^/?#]*\/\/[^/?#]*/, (origin) => origin.toLowerCase()) === b.replace(/^[^/?#]*\/\/[^/?#]*/, (origin) => origin.toLowerCase());
+function addressKey(url: string): string {
+  const m = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/i.exec(url.trim());
+  if (!m) return url.trim();
+  const scheme = m[1]!.toLowerCase();
+  const web = scheme === "http" || scheme === "https";
+  const authority = m[2]!.toLowerCase().replace(scheme === "https" ? /:443$/ : scheme === "http" ? /:80$/ : /$^/, "");
+  const rest = web && !m[3]!.startsWith("/") ? `/${m[3]}` : m[3]!;
+  return `${scheme}://${authority}${rest}`;
+}
+
+export const sameAddress = (a: string, b: string) => addressKey(a) === addressKey(b);
 
 export function spacedAddressGuess(raw: string): string | null {
   const spaced = spacedAddress(raw.trim());

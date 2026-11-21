@@ -452,7 +452,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   if (calc) out.push({ kind: "calc", expression: calc.expression, value: calc.display, url: searchUrl(engine, calc.expression) });
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...creates.map(createRow));
-  const pageRows = ranked.map((x) => pageSuggestion(x.c, x.tabId));
+  const pageRows = ranked.map((x) => pageSuggestion(x.c, x.tabId)).filter((row) => !guessedUrl || row.kind !== "page" || !sameAddress(row.url, guessedUrl));
   out.push(...pageRows.slice(0, 3));
   out.push(...remoteRows((text) => searchUrl(engine, text), engine.name));
   out.push(...pageRows.slice(3));

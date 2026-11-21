@@ -7,6 +7,7 @@ import {
   mobileSetSources,
   mobileSuggest,
   mobileSuggestRequest,
+  sameAddress,
   spacedAddressGuess,
 } from "@ardia/core/src/mobile.ts";
 import { dedupeByLanding, displayHost, landingKey } from "../../lib/url.ts";
@@ -55,7 +56,7 @@ export function suggest(text: string, remote: readonly string[], context: Sugges
         key: `p:${item.tabId ?? ""}:${item.url}`,
         kind: "page",
         title: item.title || host,
-        detail: item.tabId ? SWITCH_TO_TAB : !item.title && item.url === guess ? shown.display : host,
+        detail: item.tabId ? SWITCH_TO_TAB : !item.title && guess && sameAddress(item.url, guess) ? shown.display : host,
         url: item.url,
         favicon: item.favicon ?? null,
         tabId: item.tabId ?? null,
@@ -64,7 +65,8 @@ export function suggest(text: string, remote: readonly string[], context: Sugges
       });
     } else if (item.kind === "calc") rows.push({ key: `c:${item.expression}`, kind: "calc", title: `= ${item.value}`, detail: item.expression, url: item.url, value: item.value });
   }
-  const unique = dedupeByLanding(rows.map((row) => ({ row, url: row.kind === "page" ? row.url : row.key, opensTab: row.kind === "page" && row.switchesTab })));
+  const landing = (row: TrayRow) => (row.kind !== "page" ? row.key : guess && sameAddress(row.url, guess) ? `guess:${row.url}` : row.url);
+  const unique = dedupeByLanding(rows.map((row) => ({ row, url: landing(row), opensTab: row.kind === "page" && row.switchesTab })));
   const typed = withTypedQuery(unique.map((item) => item.row), text);
   return { rows: browsesForMe ? withBrowseForMe(typed, text) : typed, completion: result.completion };
 }

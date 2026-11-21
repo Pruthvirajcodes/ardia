@@ -618,3 +618,15 @@ test("the escaped row appears once beside a matching open tab and site suggestio
   assert.equal(rows.length, 1);
   assert.equal(result.via?.[suggestionKey(rows[0]!)], "spaced_address");
 });
+
+test("the escaped row treats a default port, a missing root slash and host case as the same address", () => {
+  const tabAt = (id: string, url: string) => ({ id, url, title: "Open", customTitle: null, favicon: null });
+  const pages = (text: string, tabs: ReturnType<typeof tabAt>[], history: { url: string; title: string; favicon: null; visits: number; lastVisit: number }[] = []) => buildSuggestions(text, { tabs, history }, { now }).items.filter((i) => i.kind === "page");
+  const chapter = pages("example.com#Chapter 2", [tabAt("t4", "https://example.com/#Chapter%202")]);
+  assert.deepEqual(chapter.map((i) => i.kind === "page" && i.tabId), ["t4"]);
+  const port = pages("example.com:443/My Folder/index.html", [tabAt("t5", "https://example.com/My%20Folder/index.html")]);
+  assert.deepEqual(port.map((i) => i.kind === "page" && i.tabId), ["t5"]);
+  const history = [{ url: "https://EXAMPLE.com/My%20Folder/index.html", title: "My Folder", favicon: null, visits: 4, lastVisit: now - 1000 }];
+  const cased = pages("example.com/My Folder/index.html", [tabAt("t6", "https://example.com/My%20Folder/index.html")], history);
+  assert.deepEqual(cased.map((i) => i.kind === "page" && i.tabId), ["t6"]);
+});

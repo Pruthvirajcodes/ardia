@@ -1341,7 +1341,17 @@ function spacedAddress(input        )                       {
   return { escaped: input.replace(/ /g, "%20"), certain };
 }
 
-const sameAddress = (a        , b        ) => a.replace(/^[^/?#]*\/\/[^/?#]*/, (origin) => origin.toLowerCase()) === b.replace(/^[^/?#]*\/\/[^/?#]*/, (origin) => origin.toLowerCase());
+function addressKey(url        )         {
+  const m = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/i.exec(url.trim());
+  if (!m) return url.trim();
+  const scheme = m[1] .toLowerCase();
+  const web = scheme === "http" || scheme === "https";
+  const authority = m[2] .toLowerCase().replace(scheme === "https" ? /:443$/ : scheme === "http" ? /:80$/ : /$^/, "");
+  const rest = web && !m[3] .startsWith("/") ? `/${m[3]}` : m[3] ;
+  return `${scheme}://${authority}${rest}`;
+}
+
+const sameAddress = (a        , b        ) => addressKey(a) === addressKey(b);
 
 function spacedAddressGuess(raw        )                {
   const spaced = spacedAddress(raw.trim());
@@ -2928,7 +2938,7 @@ function buildSuggestions(raw        , source                  , options        
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...extensionMatches.rows);
   out.push(...creates.map(createRow));
-  const pageRows = ranked.map((x) => tag(pageSuggestion(x.c, x.tabId), x.c.renamed && "renamed_tab"));
+  const pageRows = ranked.map((x) => tag(pageSuggestion(x.c, x.tabId), x.c.renamed && "renamed_tab")).filter((row) => !guessedUrl || row.kind !== "page" || !sameAddress(row.url, guessedUrl));
   out.push(...pageRows.slice(0, 3));
   const remoteSites = (options.remoteSites ?? []).slice(0, 2).filter((site) => !guessedUrl || !sameAddress(site.url, guessedUrl));
   out.push(...remoteSites.map((site)             => known(site.url) ?? tag({ kind: "page", url: site.url, title: site.title, favicon: null }, "engine_site")));

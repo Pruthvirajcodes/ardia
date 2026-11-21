@@ -126,3 +126,14 @@ test("an untitled history row still shows only its host", () => {
   assert.ok(row && row.kind === "page");
   assert.equal(row.detail, "example.com");
 });
+
+test("the escaped row stays beside a tab open at another fragment, and shows its fragment", () => {
+  const url = "https://example.com/My%20Folder/index.html";
+  setSources({ tabs: [{ id: "t1", url: `${url}#tail`, title: "My Folder", favicon: null, lastActiveAt: Date.now() }], history: [{ url, title: "My Folder", favicon: null, visits: 3, lastVisit: Date.now() - 1000 }], bookmarks: [] });
+  const rows = suggest("example.com/My Folder/index.html", [], context).rows;
+  assert.ok(rows.some((r) => r.kind === "page" && r.url === url && !r.switchesTab), "the exact address is still offered");
+  setSources({ tabs: [], history: [{ url: "https://example.com/#Chapter%202", title: "", favicon: null, visits: 3, lastVisit: Date.now() - 1000 }], bookmarks: [] });
+  const chapter = suggest("example.com#Chapter 2", [], context).rows.find((r) => r.kind === "page");
+  assert.ok(chapter && chapter.kind === "page");
+  assert.match(chapter.detail, /#Chapter/);
+});
