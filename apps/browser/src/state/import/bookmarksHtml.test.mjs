@@ -3,6 +3,7 @@ import { test } from "node:test";
 const { useBrowser } = await import("../browser/store.ts");
 const { importBookmarks } = await import("./apply.ts");
 const { bookmarkRoots } = await import("../bookmarks/bookmarks.ts");
+const { bookmarksFromHtml } = await import("../../../../../packages/expo-windows/src/import/fileFormats.ts");
 
 const S = () => useBrowser.getState();
 const P = "default";
@@ -45,4 +46,54 @@ test("a list the file gives no folder name still lands loose in Other Bookmarks"
   const exported = folder("Bookmarks", [folder("", [link("Example", "https://example.org/")])]);
   assert.equal(importBookmarks(P, exported, "HTML File"), 1);
   assert.deepEqual(otherBookmarks(), ["Example"]);
+});
+
+const fresh = () => {
+  S().hydrate({});
+  useBrowser.setState({ bookmarks: { nodes: {} } });
+};
+const ADDED = 1_700_000_000_000;
+
+test("a folder the file names with an empty title stays a folder, empty or holding links", () => {
+  fresh();
+  const exported = folder("Bookmarks", [
+    { type: "folder", title: "", dateAdded: ADDED, children: [] },
+    { type: "folder", title: "", dateAdded: ADDED, children: [folder("Inner", [link("Deep", "https://deep.example/")]), link("Kept", "https://kept.example/")] },
+  ]);
+  assert.equal(importBookmarks(P, exported, "HTML File"), 2);
+  assert.deepEqual(otherBookmarks(), [{ "": [] }, { "": [{ Inner: ["Deep"] }, "Kept"] }]);
+});
+
+test("a list the parser marks as unnamed lands loose in Other Bookmarks", () => {
+  fresh();
+  const exported = folder("Bookmarks", [folder("", [link("Loose", "https://loose.example/")], "list")]);
+  assert.equal(importBookmarks(P, exported, "HTML File"), 1);
+  assert.deepEqual(otherBookmarks(), ["Loose"]);
+});
+
+const EXPORT = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+<DL><p>
+    <DT><H3 ADD_DATE="1700000000" LAST_MODIFIED="0" PERSONAL_TOOLBAR_FOLDER="true">Bookmarks bar</H3>
+    <DL><p>
+    </DL><p>
+    <DT><H3 ADD_DATE="1700000000" LAST_MODIFIED="0"></H3>
+    <DL><p>
+    </DL><p>
+    <DT><H3 ADD_DATE="1700000000" LAST_MODIFIED="0"></H3>
+    <DL><p>
+        <DT><A HREF="https://kept.example/" ADD_DATE="1700000000">Kept</A>
+    </DL><p>
+    <DL><p>
+        <DT><A HREF="https://loose.example/" ADD_DATE="1700000000">Loose</A>
+    </DL><p>
+</DL><p>
+`;
+
+test("through the Windows parser, empty-named folders stay folders and an unnamed list lands loose", () => {
+  fresh();
+  const root = bookmarksFromHtml(EXPORT, "bookmarks.html");
+  assert.equal(importBookmarks(P, root, "HTML File"), 2);
+  assert.deepEqual(otherBookmarks(), [{ "": [] }, { "": ["Kept"] }, "Loose"]);
 });
