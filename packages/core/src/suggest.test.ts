@@ -630,3 +630,18 @@ test("the escaped row treats a default port, a missing root slash and host case 
   const cased = pages("example.com/My Folder/index.html", [tabAt("t6", "https://example.com/My%20Folder/index.html")], history);
   assert.deepEqual(cased.map((i) => i.kind === "page" && i.tabId), ["t6"]);
 });
+
+test("the escaped row leaves a tab open at another fragment alone, borrows a saved row's title, and reads a zero-padded default port", () => {
+  const url = "https://example.com/My%20Folder/index.html";
+  const tab = (id: string, at: string) => ({ id, url: at, title: "Open", customTitle: null, favicon: null });
+  const saved = (at: string) => [{ url: at, title: "My Folder", favicon: "f.ico", visits: 4, lastVisit: now - 1000 }];
+  const pages = (text: string, tabs: ReturnType<typeof tab>[], history: ReturnType<typeof saved>) => buildSuggestions(text, { tabs, history }, { now }).items.filter((i) => i.kind === "page");
+  const tail = pages("example.com/My Folder/index.html", [tab("t7", `${url}#tail`)], saved(url));
+  assert.ok(tail.some((i) => i.kind === "page" && i.tabId === "t7"), "the tab at #tail is still offered");
+  assert.ok(tail.some((i) => i.kind === "page" && i.url === url && !i.tabId), "and so is the exact address");
+  const titled = pages("example.com/My Folder/index.html", [], saved("https://EXAMPLE.com/My%20Folder/index.html"));
+  assert.equal(titled.length, 1);
+  assert.equal(titled[0]?.kind === "page" && titled[0].title, "My Folder");
+  const padded = pages("example.com:00443/My Folder/index.html", [tab("t8", url)], []);
+  assert.deepEqual(padded.map((i) => i.kind === "page" && i.tabId), ["t8"]);
+});

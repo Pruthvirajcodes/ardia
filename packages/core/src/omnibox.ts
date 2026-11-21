@@ -104,7 +104,8 @@ function addressKey(url: string): string {
   if (!m) return url.trim();
   const scheme = m[1]!.toLowerCase();
   const web = scheme === "http" || scheme === "https";
-  const authority = m[2]!.toLowerCase().replace(scheme === "https" ? /:443$/ : scheme === "http" ? /:80$/ : /$^/, "");
+  const defaultPort = scheme === "https" ? 443 : scheme === "http" ? 80 : -1;
+  const authority = m[2]!.toLowerCase().replace(/:(\d+)$/, (port, digits: string) => (!web ? port : Number(digits) === defaultPort ? "" : `:${Number(digits)}`));
   const rest = web && !m[3]!.startsWith("/") ? `/${m[3]}` : m[3]!;
   return `${scheme}://${authority}${rest}`;
 }

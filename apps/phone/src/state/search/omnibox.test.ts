@@ -132,8 +132,15 @@ test("the escaped row stays beside a tab open at another fragment, and shows its
   setSources({ tabs: [{ id: "t1", url: `${url}#tail`, title: "My Folder", favicon: null, lastActiveAt: Date.now() }], history: [{ url, title: "My Folder", favicon: null, visits: 3, lastVisit: Date.now() - 1000 }], bookmarks: [] });
   const rows = suggest("example.com/My Folder/index.html", [], context).rows;
   assert.ok(rows.some((r) => r.kind === "page" && r.url === url && !r.switchesTab), "the exact address is still offered");
+  assert.ok(rows.some((r) => r.kind === "page" && r.switchesTab && r.tabId === "t1"), "and so is the tab at #tail");
   setSources({ tabs: [], history: [{ url: "https://example.com/#Chapter%202", title: "", favicon: null, visits: 3, lastVisit: Date.now() - 1000 }], bookmarks: [] });
   const chapter = suggest("example.com#Chapter 2", [], context).rows.find((r) => r.kind === "page");
   assert.ok(chapter && chapter.kind === "page");
   assert.match(chapter.detail, /#Chapter/);
+});
+
+test("a remote suggestion at the escaped row's address doesn't add a second row", () => {
+  setSources({ tabs: [], history: [], bookmarks: [] });
+  const rows = suggest("example.com#Chapter 2", ["https://EXAMPLE.com:443/#Chapter%202"], context).rows;
+  assert.equal(rows.filter((r) => r.kind === "page").length, 1);
 });

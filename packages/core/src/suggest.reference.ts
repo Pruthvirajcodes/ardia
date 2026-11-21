@@ -444,15 +444,16 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   else if (!guessedUrl && websiteFirst && best && best.m >= 40 && (!noInline || q === best.c.text.shownLower || q === hostPart(best.c.text.shownLower))) first = pageSuggestion(best.c, best.tabId);
   else first = search;
 
+  const savedGuess = guessedUrl ? ranked.find((x) => !x.tabId && sameAddress(x.c.url, guessedUrl)) : undefined;
   const guessTab = guessedUrl ? source.tabs.find((t) => t.id !== options.currentTabId && sameAddress(t.url, guessedUrl)) : undefined;
-  const guessRow = !guessedUrl ? null : guessTab ? pageSuggestion({ url: guessTab.url, title: guessTab.customTitle || guessTab.title, favicon: guessTab.favicon, visits: 0, bookmarked: false }, guessTab.id) : (known(guessedUrl) ?? { kind: "page", url: guessedUrl, title: "", favicon: null });
+  const guessRow = !guessedUrl ? null : guessTab ? pageSuggestion({ url: guessTab.url, title: guessTab.customTitle || guessTab.title, favicon: guessTab.favicon, visits: 0, bookmarked: false }, guessTab.id) : (known(guessedUrl) ?? (savedGuess ? pageSuggestion(savedGuess.c, null) : { kind: "page", url: guessedUrl, title: "", favicon: null }));
   out.push(first);
   out.push(search);
   if (guessRow) out.push(guessRow);
   if (calc) out.push({ kind: "calc", expression: calc.expression, value: calc.display, url: searchUrl(engine, calc.expression) });
   out.push(...actionMatches.map((m) => actionRow(m.action)));
   out.push(...creates.map(createRow));
-  const pageRows = ranked.map((x) => pageSuggestion(x.c, x.tabId)).filter((row) => !guessedUrl || row.kind !== "page" || !sameAddress(row.url, guessedUrl));
+  const pageRows = ranked.map((x) => pageSuggestion(x.c, x.tabId)).filter((row) => !guessedUrl || row.kind !== "page" || !sameAddress(row.tabId ? (source.tabs.find((t) => t.id === row.tabId)?.url ?? row.url) : row.url, guessedUrl));
   out.push(...pageRows.slice(0, 3));
   out.push(...remoteRows((text) => searchUrl(engine, text), engine.name));
   out.push(...pageRows.slice(3));

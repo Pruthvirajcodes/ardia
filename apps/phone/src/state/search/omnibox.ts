@@ -65,7 +65,7 @@ export function suggest(text: string, remote: readonly string[], context: Sugges
       });
     } else if (item.kind === "calc") rows.push({ key: `c:${item.expression}`, kind: "calc", title: `= ${item.value}`, detail: item.expression, url: item.url, value: item.value });
   }
-  const landing = (row: TrayRow) => (row.kind !== "page" ? row.key : guess && sameAddress(row.url, guess) ? `guess:${row.url}` : row.url);
+  const landing = (row: TrayRow) => (row.kind !== "page" ? row.key : guess && !row.switchesTab && sameAddress(row.url, guess) ? `guess:${guess}` : row.url);
   const unique = dedupeByLanding(rows.map((row) => ({ row, url: landing(row), opensTab: row.kind === "page" && row.switchesTab })));
   const typed = withTypedQuery(unique.map((item) => item.row), text);
   return { rows: browsesForMe ? withBrowseForMe(typed, text) : typed, completion: result.completion };
