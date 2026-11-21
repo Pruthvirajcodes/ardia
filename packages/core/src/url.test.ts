@@ -301,5 +301,7 @@ test("sameAddress folds only ASCII case in the host, and default ports and the r
   assert.ok(sameAddress("https://EXAMPLE.com:443#x", "https://example.com/#x"));
   assert.ok(sameAddress("http://example.com:0080/a", "http://example.com/a"));
   assert.ok(!sameAddress("https://ΟΣ-example.com/a", "https://ος-example.com/a"));
+  assert.ok(sameAddress("https://bücher.de/a", "https://xn--bcher-kva.de/a"));
+  assert.ok(sameAddress("https://BÜCHER.de:443/a", "https://XN--BCHER-KVA.de/a"));
   assert.ok(!sameAddress("https://example.com/A", "https://example.com/a"));
 });

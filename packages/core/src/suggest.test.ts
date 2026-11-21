@@ -646,3 +646,9 @@ test("the escaped row leaves a tab open at another fragment alone, borrows a sav
   const padded = pages("example.com:00443/My Folder/index.html", [tab("t8", url)], []);
   assert.deepEqual(padded.map((i) => i.kind === "page" && i.tabId), ["t8"]);
 });
+
+test("the escaped row finds a tab open at the punycode form of a Unicode host", () => {
+  const tab = { id: "t9", url: "https://xn--bcher-kva.de/My%20Folder/index.html", title: "Bücher", customTitle: null, favicon: null };
+  const pages = buildSuggestions("bücher.de/My Folder/index.html", { tabs: [tab], history: [] }, { now }).items.filter((i) => i.kind === "page");
+  assert.deepEqual(pages.map((i) => i.kind === "page" && i.tabId), ["t9"]);
+});

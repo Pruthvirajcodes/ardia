@@ -1,6 +1,6 @@
 import { appUrlOrigin, toAppUrl } from "./appUrls.ts";
 import { cleanUrl } from "./cleanUrl.ts";
-import { displayHost } from "./idn.ts";
+import { displayHost, punycodeEncode } from "./idn.ts";
 import { PSL_TLDS } from "./tlds.ts";
 
 export type ParsedUrl = { scheme: string; host: string; port: string; path: string; query: string; hash: string };
@@ -99,13 +99,16 @@ function spacedAddress(input: string): SpacedAddress | null {
   return { escaped: input.replace(/ /g, "%20"), certain };
 }
 
+const asciiLabel = (label: string) =>
+  /^[\x00-\x7f]*$/.test(label) ? label.replace(/[A-Z]+/g, (upper) => upper.toLowerCase()) : `xn--${punycodeEncode(Array.from(label.normalize("NFC"), (c) => c.toLowerCase()).join(""))}`;
+
 function addressKey(url: string): string {
   const m = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/i.exec(url.trim());
   if (!m) return url.trim();
   const scheme = m[1]!.toLowerCase();
   const web = scheme === "http" || scheme === "https";
   const defaultPort = scheme === "https" ? 443 : scheme === "http" ? 80 : -1;
-  const authority = m[2]!.replace(/[A-Z]+/g, (upper) => upper.toLowerCase()).replace(/:(\d+)$/, (port, digits: string) => (!web ? port : Number(digits) === defaultPort ? "" : `:${Number(digits)}`));
+  const authority = m[2]!.replace(/^[^:@[\]]+/, (host) => host.split(".").map(asciiLabel).join(".")).replace(/[A-Z]+/g, (upper) => upper.toLowerCase()).replace(/:(\d+)$/, (port, digits: string) => (!web ? port : Number(digits) === defaultPort ? "" : `:${Number(digits)}`));
   const rest = web && !m[3]!.startsWith("/") ? `/${m[3]}` : m[3]!;
   return `${scheme}://${authority}${rest}`;
 }
