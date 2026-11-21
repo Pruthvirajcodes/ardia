@@ -100,7 +100,7 @@ function spacedAddress(input: string): SpacedAddress | null {
 }
 
 const asciiLabel = (label: string) =>
-  /^[\x00-\x7f]*$/.test(label) ? label.replace(/[A-Z]+/g, (upper) => upper.toLowerCase()) : `xn--${punycodeEncode(Array.from(label.normalize("NFC"), (c) => c.toLowerCase()).join(""))}`;
+  /^[\x00-\x7f]*$/.test(label) ? label.replace(/[A-Z]+/g, (upper) => upper.toLowerCase()) : `xn--${punycodeEncode(Array.from(label.normalize("NFKC"), (c) => c.toLowerCase()).join(""))}`;
 
 function addressKey(url: string): string {
   const m = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/i.exec(url.trim());
