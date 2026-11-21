@@ -233,3 +233,32 @@ test("moving an idle tab to another profile in front starts a new stretch withou
   S().moveTabToProfile(b, work);
   assert.deepEqual(idleEvents(listener, from), []);
 });
+
+test("a tab recreated under the same id, like a pin restored in another window, starts a new idle stretch", async (t) => {
+  const { b } = await idleTabs();
+  const [listener, late] = connections(t, 2);
+  subscribe(listener, ["tab.idle"], [60]);
+  const restoredAt = Date.now();
+  S().updateTab(b, { restoredAt });
+  let from = stub.controlSocket.broadcasts.length;
+  subscribe(late, ["tab.idle"], [60]);
+  assert.deepEqual(idleEvents(late, from), ["tab.idle https://c.com/ 60"]);
+  from = stub.controlSocket.broadcasts.length;
+  advance(t, 61_000);
+  S().createWindow({ url: "https://d.com/" });
+  const again = idleLog(listener, from).filter((e) => e.data.url === "https://b.com/");
+  assert.equal(again.length, 1);
+  assert.equal(again[0].data.idleSince, restoredAt);
+});
+
+test("an idle tab moved to another profile in the background never resumes the old profile's stretch when it's shown", async (t) => {
+  const { b } = await idleTabs();
+  const work = S().createProfile({ name: "Work" });
+  const [listener] = connections(t, 1);
+  subscribe(listener, ["tab.idle", "tab.resumed"], [1800]);
+  const from = stub.controlSocket.broadcasts.length;
+  S().moveTabToProfile(b, work, { background: true });
+  S().activate(b);
+  assert.equal(S().tabs[b].profileId, work);
+  assert.deepEqual(idleEvents(listener, from), []);
+});
