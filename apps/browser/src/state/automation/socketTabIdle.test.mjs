@@ -263,16 +263,18 @@ test("an idle tab moved to another profile in the background never resumes the o
   assert.deepEqual(idleEvents(listener, from), []);
 });
 
-test("a late subscriber is replayed only tabs idle for its threshold right now, from their latest activity", async (t) => {
+test("a late subscriber is replayed the open idle stretches as the others heard them, and hears their resume", async (t) => {
   const { b, c } = await idleTabs();
   const [listener, late] = connections(t, 2);
-  subscribe(listener, ["tab.idle"], [60]);
-  const synced = Date.now() - 10 * MIN;
+  subscribe(listener, ["tab.idle", "tab.resumed"], [60]);
+  const told = Object.fromEntries(idleLog(listener, 0).filter((e) => e.event === "tab.idle").map((e) => [e.data.url, e.data.idleSince]));
   S().updateTab(b, { lastActiveAt: Date.now() });
-  S().updateTab(c, { lastActiveAt: synced });
-  const from = stub.controlSocket.broadcasts.length;
-  subscribe(late, ["tab.idle"], [60]);
-  const replayed = idleLog(late, from);
-  assert.deepEqual(replayed.map((e) => e.data.url), ["https://c.com/"]);
-  assert.equal(replayed[0].data.idleSince, synced);
+  S().updateTab(c, { lastActiveAt: Date.now() - 10 * MIN });
+  let from = stub.controlSocket.broadcasts.length;
+  subscribe(late, ["tab.idle", "tab.resumed"], [60]);
+  const replayed = Object.fromEntries(idleLog(late, from).map((e) => [e.data.url, e.data.idleSince]));
+  assert.deepEqual(replayed, told);
+  from = stub.controlSocket.broadcasts.length;
+  S().activate(b);
+  assert.deepEqual(idleEvents(late, from), ["tab.resumed https://b.com/ 60"]);
 });

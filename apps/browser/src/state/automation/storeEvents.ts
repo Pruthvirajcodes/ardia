@@ -184,10 +184,7 @@ export function startTabIdle(send: EventSend): TabIdleTracker {
     catchUp: (thresholds) => scan(new Set(thresholds)),
     idleNow: (threshold) => {
       const s = useBrowser.getState();
-      const now = Date.now();
-      return [...(idle.get(threshold) ?? [])]
-        .filter(([id, record]) => stillIdle(s, id, record) && now - lastActivity(s, id) >= threshold * 1000)
-        .map(([id]) => ({ ...idleData(s, id, threshold), idleSince: lastActivity(s, id) }));
+      return [...(idle.get(threshold) ?? [])].filter(([id, record]) => stillIdle(s, id, record)).map(([id, record]) => ({ ...idleData(s, id, threshold), idleSince: record.since }));
     },
     stop: () => {
       clearInterval(timer);
