@@ -3,7 +3,7 @@ import { errorText } from "../../lib/errors";
 import { redactedEventData } from "../automation/eventRedaction";
 import type { PluginManifest } from "../../lib/pluginManifest";
 import { failure, parseRequest, parseSubscription, type RequestId, type Subscription } from "../automation/automationMethods";
-import { idleToReplay } from "../automation/automationFeed";
+import { changeSubscription } from "../automation/automationFeed";
 import { eventTargets, refreshFeed, setFeedConsumer, type Body } from "../automation/controlSocket";
 import { launchToReplay } from "../automation/lifecycleEvents";
 import { isDecideEvent, type AutomationEventName } from "../automation/eventNames";
@@ -41,10 +41,10 @@ function subscribe(c: Connection, m: PluginManifest, params: Record<string, unkn
   if (outside.length) return failure("refused", `This plugin's hooks don't list ${outside.join(", ")}.`);
   const sub = parseSubscription({ events, idle: params.idle, fullUrls: m.permissions.fullUrls });
   if ("error" in sub) return sub;
-  const before = c.sub;
-  c.sub = sub.events.size ? sub : null;
-  refreshFeed();
-  const replay = idleToReplay(before, c.sub);
+  const replay = changeSubscription(c.sub, sub.events.size ? sub : null, () => {
+    c.sub = sub.events.size ? sub : null;
+    refreshFeed();
+  });
   if (replay.length) idleReplays.set(c, replay);
   if (c.sub?.events.has("app.launched") && !c.launchSent) {
     const launch = launchToReplay();

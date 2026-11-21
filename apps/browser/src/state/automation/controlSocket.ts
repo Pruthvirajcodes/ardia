@@ -26,7 +26,7 @@ import { warnFor } from "../telemetry/logs";
 import { controlTabTargets } from "../../platform/control";
 import { TAB_IDLE_EVENTS, USER_IDLE_EVENTS, type AutomationEventName } from "./eventNames";
 import { clientProtocolProblem, commands, failure, hello, parseRequest, parseSubscription, planRun, type RequestId, type Subscription } from "./automationMethods";
-import { feedNeeds, idleToReplay, stopFeed, updateFeed } from "./automationFeed";
+import { changeSubscription, feedNeeds, stopFeed, updateFeed } from "./automationFeed";
 import { answerDecision, dropResponder, serveHooks, stopResponders } from "./decideSocket";
 import { launchToReplay, recordLaunch, runLaunchActions } from "./lifecycleEvents";
 import { startDecideHooks } from "./decideHooks";
@@ -201,11 +201,11 @@ function subscribe(connection: number, params: Record<string, unknown>): Body {
   if ("error" in sub) return sub;
   const served = serveHooks(connection, sub.hooks);
   if ("error" in served) return failure("bad_request", served.error);
-  const before = subscriptions.get(connection);
-  if (sub.events.size) subscriptions.set(connection, sub);
-  else subscriptions.delete(connection);
-  refreshFeed();
-  const replay = idleToReplay(before, subscriptions.get(connection));
+  const replay = changeSubscription(subscriptions.get(connection), sub.events.size ? sub : null, () => {
+    if (sub.events.size) subscriptions.set(connection, sub);
+    else subscriptions.delete(connection);
+    refreshFeed();
+  });
   if (replay.length) idleReplays.set(connection, replay);
   replayLaunch(connection);
   return { result: { ok: true, served: served.served, ...(sub.hooks === undefined || sub.hooks === null ? {} : { revisions: served.revisions }) } };

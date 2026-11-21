@@ -70,7 +70,9 @@ function stopTabIdle() {
 
 const wantsIdleAt = (sub: Subscription | null | undefined, threshold: number) => !!sub?.events.has("tab.idle") && sub.tabIdle.has(threshold);
 
-export function idleToReplay(before: Subscription | null | undefined, after: Subscription | null | undefined): Record<string, unknown>[] {
-  if (!after) return [];
-  return [...after.tabIdle].filter((t) => wantsIdleAt(after, t) && !wantsIdleAt(before, t)).flatMap((t) => tabIdle?.idleNow(t) ?? []);
+export function changeSubscription(before: Subscription | null | undefined, after: Subscription | null | undefined, install: () => void): Record<string, unknown>[] {
+  const joining = after ? [...after.tabIdle].filter((t) => wantsIdleAt(after, t) && !wantsIdleAt(before, t)) : [];
+  if (joining.length) tabIdle?.catchUp();
+  install();
+  return joining.flatMap((t) => tabIdle?.idleNow(t) ?? []);
 }

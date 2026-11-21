@@ -7,6 +7,13 @@ const stub = await import("../../test-native/index.ts");
 const S = () => useBrowser.getState();
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const MIN = 60_000;
+const realNow = Date.now;
+let skew = 0;
+Date.now = () => realNow() + skew;
+function advance(t, ms) {
+  skew += ms;
+  t.after(() => (skew = 0));
+}
 let nextId = 0;
 let nextConnection = 900;
 
@@ -48,6 +55,13 @@ function subscribe(connection, events, tab) {
   const mine = sent.slice(from).filter((s) => s.connections.includes(connection));
   assert.equal(mine[0]?.kind, "reply", "the subscribe reply comes before any idle event");
 }
+
+const idleLog = (connection, from) =>
+  stub.controlSocket.broadcasts
+    .slice(from)
+    .filter((b) => b.connections.includes(connection))
+    .map((b) => JSON.parse(b.line))
+    .filter((e) => e.event === "tab.idle" || e.event === "tab.resumed");
 
 const idleEvents = (connection, from) =>
   stub.controlSocket.broadcasts
@@ -140,4 +154,38 @@ test("a subscribe whose reply couldn't be written leaves no idle replay for the 
   assert.equal(failNextReply, false, "the subscribe reply was attempted");
   stub.emitControlRequest({ connection: listener, generation: stub.controlSocket.generation, line: JSON.stringify({ id: ++nextId, method: "hello" }) });
   assert.deepEqual(idleEvents(listener, from), []);
+});
+
+test("a client joining a watched threshold gets the tabs that crossed it since the last scan, and the others get them once", async (t) => {
+  const { b, c } = await idleTabs();
+  for (const id of [b, c]) S().updateTab(id, { lastActiveAt: Date.now() - 59_000 });
+  const [resumes, idles, late] = connections(t, 3);
+  subscribe(resumes, ["tab.resumed"], [60]);
+  subscribe(idles, ["tab.idle"], [60]);
+  const from = stub.controlSocket.broadcasts.length;
+  advance(t, 2_000);
+  subscribe(late, ["tab.idle", "tab.resumed"], [60]);
+  S().activate(b);
+  assert.deepEqual(idleEvents(late, from), ["tab.idle https://b.com/ 60", "tab.idle https://c.com/ 60", "tab.resumed https://b.com/ 60"]);
+  assert.deepEqual(idleEvents(idles, from), ["tab.idle https://b.com/ 60", "tab.idle https://c.com/ 60"]);
+  assert.deepEqual(idleEvents(resumes, from), ["tab.resumed https://b.com/ 60"]);
+});
+
+test("a tab moved to another profile in the background starts a new idle stretch there", async (t) => {
+  const { b } = await idleTabs();
+  const work = S().createProfile({ name: "Work" });
+  const [listener, late] = connections(t, 2);
+  subscribe(listener, ["tab.idle"], [1800]);
+  S().moveTabToProfile(b, work, { background: true });
+  const movedAt = S().tabs[b].lastActiveAt;
+  let from = stub.controlSocket.broadcasts.length;
+  subscribe(late, ["tab.idle"], [1800]);
+  assert.deepEqual(idleEvents(late, from), ["tab.idle https://c.com/ 1800"]);
+  from = stub.controlSocket.broadcasts.length;
+  advance(t, 31 * MIN);
+  S().createWindow({ url: "https://d.com/" });
+  const again = idleLog(listener, from).filter((e) => e.data.url === "https://b.com/");
+  assert.equal(again.length, 1, "the moved tab goes idle again after a full stretch");
+  assert.equal(again[0].data.profile, work);
+  assert.equal(again[0].data.idleSince, movedAt);
 });
