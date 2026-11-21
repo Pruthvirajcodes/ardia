@@ -133,7 +133,6 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
     if let color = pageBackgroundColor { view.underPageBackgroundColor = color }
     listen(to: view)
     view.frame = bounds
-    view.autoresizingMask = [.width, .height]
     addSubview(view)
     updateHidden()
     observe(view)
