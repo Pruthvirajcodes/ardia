@@ -262,3 +262,17 @@ test("an idle tab moved to another profile in the background never resumes the o
   assert.equal(S().tabs[b].profileId, work);
   assert.deepEqual(idleEvents(listener, from), []);
 });
+
+test("a late subscriber is replayed only tabs idle for its threshold right now, from their latest activity", async (t) => {
+  const { b, c } = await idleTabs();
+  const [listener, late] = connections(t, 2);
+  subscribe(listener, ["tab.idle"], [60]);
+  const synced = Date.now() - 10 * MIN;
+  S().updateTab(b, { lastActiveAt: Date.now() });
+  S().updateTab(c, { lastActiveAt: synced });
+  const from = stub.controlSocket.broadcasts.length;
+  subscribe(late, ["tab.idle"], [60]);
+  const replayed = idleLog(late, from);
+  assert.deepEqual(replayed.map((e) => e.data.url), ["https://c.com/"]);
+  assert.equal(replayed[0].data.idleSince, synced);
+});
