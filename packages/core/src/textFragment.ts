@@ -22,6 +22,8 @@ const CAPPED_CONTEXT_CHARS = 48;
 const PAGE_TEXT_CAP = 3_000_000;
 const MAX_SCORING_WORK = 3_000_000;
 const MATCH_COST = 16;
+const SEARCHED_HEAD_CHARS = 256;
+const COMPARED_CHARS_PER_COST = 8;
 const MAX_SCANNED_CHARS = 2 * CONTEXT_CHARS;
 const CHUNK_CHARS = 32_768;
 
@@ -83,7 +85,7 @@ function looselyFolded(text: string): string {
       .replace(/[“”״]/g, '"')
       .replace(FOLDABLE, (char) => FOLDS[char]!)
       .replace(/[\u0660-\u0669\u06f0-\u06f9]/g, (digit) => String(digit.charCodeAt(0) & 15))
-      .replace(/[\u30a1-\u30f6]+/g, hiraganaOf)
+      .replace(/[\u30a1-\u30f6]{1,8192}/g, hiraganaOf)
       .replace(/\s{2,}|[^\S ]/g, " ");
   });
 }
@@ -175,7 +177,14 @@ function selectionSpan(text: string, { selected, before, after }: SelectionConte
     let best: Span | null | undefined;
     let bestScore = -1;
     let work = 0;
-    for (let from = haystack.indexOf(needle); from !== -1; from = haystack.indexOf(needle, from + 1)) {
+    const head = needle.slice(0, SEARCHED_HEAD_CHARS);
+    const last = haystack.length - needle.length;
+    for (let from = haystack.indexOf(head); from !== -1 && from <= last; from = haystack.indexOf(head, from + 1)) {
+      if (head.length < needle.length) {
+        work += needle.length / COMPARED_CHARS_PER_COST;
+        if (work > MAX_SCORING_WORK && from > 0) return null;
+        if (!haystack.startsWith(needle, from)) continue;
+      }
       const to = from + needle.length;
       if (!left && from > 0 && text[from - 1] !== "\n") continue;
       if (!right && to < text.length && text[to] !== "\n") continue;

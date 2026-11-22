@@ -302,6 +302,11 @@ test("a first copy doesn't borrow the line above to be unique", () => {
   assert.deepEqual(chooseTextFragment({ selected: "Run the command", before: "", after: "", pageText }), { start: "Run the command" });
 });
 
+test("a long run of squared katakana folds without overflowing the stack", () => {
+  const pageText = `${"\u3347".repeat(32768)}\nzebra`;
+  assert.deepEqual(chooseTextFragment({ selected: "zebra", before: "", after: "", pageText }), { start: "zebra" });
+});
+
 test("words split by a comma are words of their own", () => {
   assert.equal(chooseTextFragment({ selected: "world", before: "hello,", after: "", pageText: "hello,world" })?.start, "world");
 });
