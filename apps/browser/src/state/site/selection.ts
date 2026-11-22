@@ -10,7 +10,8 @@ import { showToast } from "../app/toasts";
 import { openModeFor } from "../bookmarks/actions";
 import { openFromPage } from "../tabs/openFromPage";
 import { awaitsFirstPage } from "../tabs/pendingAddress";
-import { noteSelectedTabUrlsCopied, noteUrlCopied } from "../telemetry/urlCopies";
+import { noteQuoteLink, noteSelectedTabUrlsCopied, noteUrlCopied } from "../telemetry/urlCopies";
+import { consentToken } from "../telemetry/client";
 import { selectedTabIds } from "../pins/organize";
 import { copyLinks } from "../bookmarks/linkMenus";
 import { tabTitle } from "../browser/model";
@@ -92,7 +93,9 @@ async function linkToSelection(tabId: string): Promise<string | null> {
 }
 
 export async function copyLinkToSelection(tabId: string) {
+  const consent = consentToken();
   const link = await linkToSelection(tabId);
+  noteQuoteLink(!!link, consent);
   const windowId = store().tabs[tabId]?.windowId;
   if (!link || !windowId) return;
   copyText(link);
