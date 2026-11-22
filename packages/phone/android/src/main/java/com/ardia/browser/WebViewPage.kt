@@ -458,13 +458,14 @@ internal class WebViewPage(
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 lastTouchX = event.x
                 lastTouchY = event.y
-                scrollTracker.touched()
+                scrollTracker.touched(event.rawY.toDouble())
                 if (isNavigatingHistory) {
                     isNavigatingHistory = false
                     mainHandler.removeCallbacks(clearHistoryNavigationRunnable)
                     scrollTracker.snapTo(web.scrollY.toDouble())
                 }
             }
+            if (event.actionMasked == MotionEvent.ACTION_MOVE) scrollTracker.dragged(event.rawY.toDouble())
             false
         }
         web.setOnLongClickListener { longPressed(web) }

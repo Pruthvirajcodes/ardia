@@ -1,5 +1,6 @@
 package com.ardia.browser
 
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -35,21 +36,26 @@ class ScrollDirectionTracker(private val threshold: Double = 24.0, private val r
         private set
     private var anchor = 0.0
     private var settlesUntil = Long.MIN_VALUE
+    private var fingerY = 0.0
+    private var dragDirection: ScrollDirection? = null
 
     fun offer(offset: Double, atEnd: Boolean, nowMillis: Long): ScrollDirection? {
         if (offset <= 0) {
             anchor = 0.0
             return update(ScrollDirection.Up)
         }
-        if (atEnd || nowMillis < settlesUntil) {
+        val delta = offset - anchor
+        val heading = if (delta > 0) ScrollDirection.Down else ScrollDirection.Up
+        val movedByResize = nowMillis < settlesUntil && heading != dragDirection
+        val bouncedOffEnd = atEnd && heading == ScrollDirection.Up
+        if (movedByResize || bouncedOffEnd) {
             anchor = offset
             return null
         }
-        val delta = offset - anchor
         val turned = if (direction == ScrollDirection.Up) delta > threshold else delta < -threshold
         if (turned) {
             anchor = offset
-            return update(if (delta > 0) ScrollDirection.Down else ScrollDirection.Up)
+            return update(heading)
         }
         if (if (direction == ScrollDirection.Down) delta > 0 else delta < 0) anchor = offset
         return null
@@ -57,10 +63,19 @@ class ScrollDirectionTracker(private val threshold: Double = 24.0, private val r
 
     fun resized(nowMillis: Long) {
         settlesUntil = nowMillis + resizeSettleMillis
+        dragDirection = null
     }
 
-    fun touched() {
+    fun touched(y: Double) {
         settlesUntil = Long.MIN_VALUE
+        fingerY = y
+    }
+
+    fun dragged(y: Double) {
+        val travel = fingerY - y
+        if (abs(travel) <= threshold) return
+        dragDirection = if (travel > 0) ScrollDirection.Down else ScrollDirection.Up
+        fingerY = y
     }
 
     fun reset() {
