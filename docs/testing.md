@@ -66,6 +66,26 @@ holds the rest.
 | Native perf | `node apps/browser/scripts/perf/native-bench.mjs --app <Release app> --out <dir>` | Launch, idle, memory, tab and window latency; the release perf gate (`docs/perf/README.md`) |
 | JS perf | `node apps/browser/scripts/perf/js-bench.mjs run --app <Release app> --bundle <main.jsbundle> --label <name>` | What each interaction costs the JS thread (`docs/perf/README.md`) |
 
+## CI
+
+- `checks.yml` runs four `ubuntu-latest` jobs: typecheck, the portable tests and the Mac bundle (Metro, then
+  Hermes) in one, and the browser's tests in three shares (`--test-shard=I/3`). Each share restores the TSX it
+  transpiled last time (`ardia-test-tsx-I-of-3-…`); only pushes to `main` save it, so pull requests add no caches.
+  A newer push cancels the run before it, on `main` too.
+- `mac.yml` compiles the Mac app (Debug, unsigned, `xcode-27`) on pull requests and pushes that touch its native code:
+  `apps/browser/macos`, the packages' `ios` folders, the Dock tile and plugin host, the engine's public headers, the
+  workspace manifests, the patches and the lockfile. It builds against this commit's engine, or the nearest published
+  one before it, and any compiler error fails it. When `engine/ardiacore/src/ardia/core/public` changed since that
+  engine it also fails after the build, asking for the engine to be published first.
+- The heavy workflows (`ios.yml`, `android.yml`, `linux.yml`, `windows.yml`, `mac.yml`) run their vouch `gate` job
+  only for pull requests from forks. Pushes, manual runs and branches of this repository skip it and start the build
+  at once. A newer push or pull request run cancels the one before it; manual and release runs each have their own
+  group and are never cancelled. `windows.yml` reads the `full-ci` label in its `identity` job, live, so adding the
+  label and re-running all jobs gives the full run.
+- Caches that would fill the 10 GB limit are saved on pushes to `main` only and pruned to the newest per branch by
+  `caches.yml`: Gradle (`gradle-phone-`, which `--main-only` also deletes from every other branch), Xcode compilation
+  caches (`xcode-cas-`), Pods (`pods-`, shared by `mac.yml` and the Release workflow, and `phone-pods-`).
+
 ## ArdiaCore acceptance
 
 The acceptance run's checks and what each proves are listed in `docs/ardiacore-parity.md` › "Acceptance (hidden instance)".
