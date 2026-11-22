@@ -5,6 +5,8 @@ import { groupOf, pinnedChildGroup } from "../pins/tabGrouping";
 import { splitOf, splitTabIds, splitTabIdsOf } from "../splits/splits";
 import type { BrowserWindow, Tab } from "../browser/types";
 import { isAsleep } from "./pageSession";
+import { isSleeping } from "./sleepingTabs";
+import { noteCloseWokeSleepingTab } from "../telemetry/tabSleepCounts";
 
 const regular = (s: BrowserState, id: string) => !inPinnedContainer(s, id);
 
@@ -97,7 +99,8 @@ export function switchKeepsOpeners(s: BrowserState, from: string, to: string): b
 export function closeSuccessor(s: BrowserState, closed: string, order: string[], left: string[]): string | undefined {
   const at = order.indexOf(closed);
   const nearest = [...left.filter((id) => order.indexOf(id) > at), ...left.filter((id) => order.indexOf(id) < at).reverse()];
-  const awake = nearest.filter((id) => !isAsleep(s.tabs[id]));
+  const awake = nearest.filter((id) => !isAsleep(s.tabs[id]) && !isSleeping(id));
+  if (nearest.length && !awake.length) noteCloseWokeSleepingTab();
   const pool = awake.length ? awake : nearest;
   const seen = pool.filter((id) => !s.tabs[id]!.unseen);
   if (!seen.length) return pool[0];

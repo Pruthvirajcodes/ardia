@@ -6,6 +6,9 @@ const { activeTabId, viewTabIds } = await import("../browser/model.ts");
 const { closeTab } = await import("../browser/actions.ts");
 const { splitTabIdsOf } = await import("../splits/splits.ts");
 const { closeWindowDialog } = await import("../windows/windowClose.ts");
+const { noteDiscarded } = await import("./tabLifecycle.ts");
+const { isSleeping, useLifecycle } = await import("./sleepingTabs.ts");
+const { takeTabSleepCounts } = await import("../telemetry/tabSleepCounts.ts");
 await import("../../test-native/index.ts");
 
 const S = () => useBrowser.getState();
@@ -29,6 +32,37 @@ test("closing a Peek through either call ends the Peek and records nothing", () 
     assert.ok(S().tabs[a]);
     assert.equal(S().closedTabs.length, closed);
   }
+});
+
+function visitedInOrder(t, ...hosts) {
+  t.mock.timers.enable({ apis: ["Date"], now: 1_700_000_000_000 });
+  useLifecycle.setState({ discarded: {} });
+  const { w, ids } = windowWith(hosts[0]);
+  for (const h of hosts.slice(1)) {
+    t.mock.timers.tick(100);
+    ids.push(S().newTab(w, { url: `https://${h}.com/` }));
+    S().activate(ids.at(-1));
+  }
+  takeTabSleepCounts();
+  return { w, ids };
+}
+
+test("⌘W on the front tab switches to an awake tab and leaves a tab put to sleep from its menu asleep", (t) => {
+  const { w, ids: [a, b, c] } = visitedInOrder(t, "a", "b", "c");
+  noteDiscarded(b, "external");
+  S().closeTab(c);
+  assert.equal(activeTabId(S(), w), a);
+  assert.equal(isSleeping(b), true);
+  assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 0);
+});
+
+test("⌘W with only sleeping tabs left still switches to the one used last, and counts the wake", (t) => {
+  const { w, ids: [a, b, c] } = visitedInOrder(t, "a", "b", "c");
+  noteDiscarded(a, "proactive");
+  noteDiscarded(b, "external");
+  S().closeTab(c);
+  assert.equal(activeTabId(S(), w), b);
+  assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 1);
 });
 
 test("⌘W on the last tab closes the window; closing every tab at once keeps it with a New Tab", () => {

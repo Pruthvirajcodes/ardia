@@ -3,7 +3,7 @@ import type { ConsentToken } from "./choice";
 import { consentOrNow, countFor } from "./countFor";
 import type { KeptAwakeReason } from "../tabs/sleepRefusals";
 
-const none = () => ({ captureIndicatorsCleared: 0, mediaCardsCleared: 0, pinnedTabsSleptByMemorySaver: 0, tabsSleptOverBudget: 0, tabsSleptOverBudgetReopened: 0, tabsOverBudgetSkippedLoading: 0, tabsOverBudgetAsksPassedOn: 0, topAppsKeptRunning: 0, topAppWindowsClosedFromNewTab: 0, topAppsUnloadedFromMenu: 0, tabsSleptFromMenu: 0, groupsSleptFromMenu: 0, menuSleepsKeptAwake: 0, menuSleepsPastAutomatic: 0, menuSleepKeptReason: null as KeptAwakeReason | null });
+const none = () => ({ captureIndicatorsCleared: 0, mediaCardsCleared: 0, pinnedTabsSleptByMemorySaver: 0, tabsSleptOverBudget: 0, tabsSleptOverBudgetReopened: 0, tabsOverBudgetSkippedLoading: 0, tabsOverBudgetAsksPassedOn: 0, topAppsKeptRunning: 0, topAppWindowsClosedFromNewTab: 0, topAppsUnloadedFromMenu: 0, tabsSleptFromMenu: 0, groupsSleptFromMenu: 0, menuSleepsKeptAwake: 0, menuSleepsPastAutomatic: 0, menuSleepKeptReason: null as KeptAwakeReason | null, closesWokeSleepingTab: 0 });
 
 let pending = none();
 
@@ -17,6 +17,10 @@ export function noteMediaCardCleared() {
 
 export function noteTabSlept(pinned: boolean, reason: string | null) {
   if (pinned && reason === "proactive") pending.pinnedTabsSleptByMemorySaver++;
+}
+
+export function noteCloseWokeSleepingTab() {
+  pending.closesWokeSleepingTab++;
 }
 
 export function noteTabSleptOverBudget(consent?: ConsentToken | null) {
@@ -96,5 +100,6 @@ export function takeTabSleepCounts() {
     tabs_slept_over_budget_reopened: taken.tabsSleptOverBudgetReopened,
     tabs_over_budget_skipped_loading: taken.tabsOverBudgetSkippedLoading,
     tabs_over_budget_asks_passed_on: taken.tabsOverBudgetAsksPassedOn,
+    closes_woke_sleeping_tab: taken.closesWokeSleepingTab,
   };
 }
