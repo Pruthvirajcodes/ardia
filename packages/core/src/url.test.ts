@@ -45,11 +45,12 @@ test("fixupUrl leaves searches alone: file names, emails, prose, unknown schemes
 });
 
 test("four numbers are an IPv4 address only up to 255 each, as in Chrome: past that they search", () => {
-  for (const input of ["192.168.0.256", "256.1.1.1", "999.999.999.999", "192.168.0.256.", "192.168.0.256:8080", "10.0.0.300/admin", "192.168.0.256/a b"]) {
+  for (const input of ["192.168.0.256", "256.1.1.1", "10.256.0.1", "10.0.256.1", "999.999.999.999", "192.168.0.256.", "192.168.0.256:8080", "10.0.0.300/admin", "192.168.0.256/a b"]) {
     assert.equal(fixupUrl(input), null, input);
     assert.equal(classifyPaste(input)?.kind, "search", input);
+    assert.equal(spacedAddressGuess(input), null, input);
   }
-  for (const input of ["192.168.0.255", "255.255.255.255", "0.0.0.0", "10.0.0.30/admin", "192.168.0.1:8080"]) {
+  for (const input of ["192.168.0.1.", "192.168.0.255", "255.255.255.255", "0.0.0.0", "10.0.0.30/admin", "192.168.0.1:8080"]) {
     assert.equal(fixupUrl(input), `http://${input}`, input);
   }
   assert.equal(fixupUrl("http://192.168.0.256"), "http://192.168.0.256", "a typed scheme still opens");
