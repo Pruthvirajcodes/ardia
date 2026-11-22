@@ -36,6 +36,7 @@ const ONLY_FORMAT = /^\p{Cf}+$/u;
 const UNREACHABLE_EDGE = /(?![\u200c\u200d])\p{Cf}/u;
 const UNSKIPPED_GAP = /[\u202f\ufeff]/;
 const ENDS_LINE = /\n\s*$/;
+const LABEL = /^\p{L}{3}[\p{L} |]*$/u;
 const TERM_WORD = /(?:[^\s。、，．！？：；「」『』（）]|\u202f|[，．：；](?=[0-9A-Za-z\uff10-\uff19]))+[。、，．！？：；「」『』（）]*|[。、，．！？：；「」『』（）]+/g;
 
 function toWordBoundaries(context: SelectionContext): SelectionContext {
@@ -86,6 +87,19 @@ function bracketGlue(after: string): Glue | null {
   return word ? { word, rest: collapsed(unglued).replace(/\s/g, "") } : null;
 }
 
+function isRepeatedLabel(text: string, from: number): boolean {
+  const lineEnd = trailerEnd(text, from);
+  if (lineEnd === -1) return false;
+  const label = text.slice(from, lineEnd);
+  if (!LABEL.test(label)) return false;
+  let work = 0;
+  for (let at = text.indexOf(`${label}\n`); at !== -1 && work < MAX_SCORING_WORK; at = text.indexOf(`${label}\n`, at + 1)) {
+    work += MATCH_COST;
+    if (at !== from && isInsideWord(text, at)) return true;
+  }
+  return false;
+}
+
 function sharedPastGlue(text: string, to: number, endsLine: boolean, right: string, glue: Glue | null): number | null {
   if (endsLine) {
     const lineEnd = trailerEnd(text, to);
@@ -113,14 +127,16 @@ function spanPastTrailers(text: string, wanted: string, left: string, right: str
     const firstLineEnd = from + first.length;
     const glued = firstLineEnd < text.length && text[firstLineEnd] !== "\n";
     let trailed = false;
+    let trailsLater = false;
     let to = firstLineEnd;
-    for (const line of rest) {
+    for (const [index, line] of rest.entries()) {
       work += 1 + line.length / COMPARED_CHARS_PER_COST;
       if (work > MAX_SCORING_WORK) return null;
       const lineEnd = trailerEnd(text, to);
       if (lineEnd === -1) continue candidates;
       const trails = lineEnd > to;
       if (trails && !(isJoinable(charBefore(text, to)) && isJoinable(charAfter(text, to)))) continue candidates;
+      if (trails && index > 0) trailsLater = true;
       if (!text.startsWith(line, lineEnd + 1)) {
         if (!trails && text.startsWith(line.slice(0, TRAILER_CONTEXT_CHARS), lineEnd + 1)) nearMiss = true;
         continue candidates;
@@ -132,10 +148,11 @@ function spanPastTrailers(text: string, wanted: string, left: string, right: str
     if (!trailed) continue;
     const score = (left ? sharedBefore(text, from, left) : 0) + (right ? sharedAfter(text, to, right) : 0);
     if (score < bestScore) continue;
-    found = score === bestScore ? null : { from, to, score, firstLineEnd, glued };
+    found = score === bestScore ? null : { from, to, score, firstLineEnd, glued: glued && !trailsLater };
     bestScore = score;
   }
-  return found && nearMiss ? null : found;
+  if (!found) return found;
+  return nearMiss || !found.glued || !isRepeatedLabel(text, found.firstLineEnd!) ? null : found;
 }
 
 const withoutBreaks = (text: string) => mapChunks(text, (chunk) => chunk.replace(/\n/g, " "));
@@ -153,6 +170,7 @@ function selectionSpan(text: string, context: SelectionContext, truncated: boole
     let best: Found | null | undefined;
     let bestScore = -1;
     let rejectedScore = -1;
+    let hasPlain = false;
     let work = 0;
     const head = needle.slice(0, SEARCHED_HEAD_CHARS);
     const last = haystack.length - needle.length;
@@ -167,6 +185,7 @@ function selectionSpan(text: string, context: SelectionContext, truncated: boole
       if (!right && to < text.length && text[to] !== "\n" && !(endsLine && isInsideWord(text, to))) continue;
       const leftShared = left ? sharedBefore(text, from, left) : 0;
       const rightShared = right ? sharedAfter(text, to, right) : 0;
+      if (endsLine && !hasPlain) hasPlain = !isInsideWord(text, from) && !isInsideWord(text, to);
       let pastGlue: number | null = null;
       if (mayBeGlued && isInsideWord(text, to)) {
         work += GLUE_COST;
@@ -184,7 +203,9 @@ function selectionSpan(text: string, context: SelectionContext, truncated: boole
       best = score === bestScore ? null : { from, to, score, glued: pastGlue !== null };
       bestScore = score;
     }
-    return best && rejectedScore >= bestScore ? null : best;
+    if (!best) return best;
+    if (rejectedScore >= bestScore) return null;
+    return best.glued && endsLine && (hasPlain || !isRepeatedLabel(text, best.to)) ? null : best;
   };
   const exact = bestIn(text, wanted);
   const found = exact === undefined ? bestIn(withoutBreaks(text), withoutBreaks(wanted)) : exact;

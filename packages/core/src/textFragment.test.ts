@@ -308,24 +308,24 @@ test("a long run of squared katakana folds without overflowing the stack", () =>
 });
 
 const intro = "An old protocol for documents.";
+const otherSection = "Historyedit\nIts history is short.";
 const body = "The system was released by the university in the spring.";
 
 test("a heading with a glued edit link is linked, not its contents entry", () => {
-  const pageText = `Contents\nUsage\n\n${intro}\n\nUsageedit\n\n${body}`;
-  for (const [selected, after] of [["Usage", "[edit]"], ["Usage\n", body.slice(0, 48)]] as const) {
-    assert.deepEqual(chooseTextFragment({ selected, before: "", after, pageText }), { prefix: "documents.", start: "Usage" });
-  }
+  const pageText = `Contents\nUsage\n\n${intro}\n\nUsageedit\n\n${body}\n${otherSection}`;
+  assert.deepEqual(chooseTextFragment({ selected: "Usage", before: "", after: "[edit]", pageText }), { prefix: "documents.", start: "Usage" });
+  assert.equal(chooseTextFragment({ selected: "Usage\n", before: "", after: body.slice(0, 48), pageText }), null);
 });
 
 test("a heading with a glued edit link and its paragraph are found", () => {
-  const pageText = `${intro}\n\nUsageedit\n\n${body}`;
+  const pageText = `${intro}\n\nUsageedit\n\n${body}\n${otherSection}`;
   const fragment = chooseTextFragment({ selected: `Usage\n${body}`, before: "", after: "", pageText });
   assert.equal(fragment?.start, "Usage");
   assert.equal(fragment?.end, "in the spring.");
 });
 
 test("a glued heading that can't be told from a copy is no link, never the copy", () => {
-  const pageText = `${intro}\nUsageedit\n${body}\nUsage\n${body}`;
+  const pageText = `${intro}\nUsageedit\n${body}\nUsage\n${body}\n${otherSection}`;
   assert.equal(chooseTextFragment({ selected: `Usage\n${body}`, before: "", after: "", pageText }), null);
 });
 
@@ -340,13 +340,13 @@ test("a longer line isn't a heading with a glued link", () => {
 });
 
 test("a double-clicked glued heading with nothing after it is linked only when it is the only copy", () => {
-  const glued = `${intro}\n\nUsageedit\n\n${body}`;
+  const glued = `${intro}\n\nUsageedit\n\n${body}\n${otherSection}`;
   assert.deepEqual(chooseTextFragment({ selected: "Usage\n", before: "", after: "", pageText: glued }), { start: "Usage" });
   assert.equal(chooseTextFragment({ selected: "Usage\n", before: "", after: "", pageText: `Contents\nUsage\n\n${glued}` }), null);
 });
 
 test("a glued heading with part of its paragraph wins over a copy by its context", () => {
-  const pageText = `${intro}\nUsageedit\n${body} Later it grew.\nSecond intro.\nUsage\n${body} Different ending.`;
+  const pageText = `${intro}\nUsageedit\n${body} Later it grew.\nSecond intro.\nUsage\n${body} Different ending.\n${otherSection}`;
   const fragment = chooseTextFragment({ selected: `Usage\n${body}`, before: "", after: " Later it grew.", pageText });
   assert.equal(fragment?.start, "Usage");
   assert.notEqual(fragment?.prefix, "Second intro.");
@@ -354,13 +354,35 @@ test("a glued heading with part of its paragraph wins over a copy by its context
 });
 
 test("a joined copy doesn't win over a glued heading and its paragraph", () => {
-  const pageText = `${intro}\nUsageedit\n${body}\nSecond intro.\nUsage ${body}`;
+  const pageText = `${intro}\nUsageedit\n${body}\nSecond intro.\nUsage ${body}\n${otherSection}`;
   assert.equal(chooseTextFragment({ selected: `Usage\n${body}`, before: "", after: "", pageText }), null);
 });
 
 test("a prefix that also ends right before a later copy isn't unique", () => {
   const pageText = "Wait Alphaedit\nAlphaedit\nAlpha";
   assert.deepEqual(chooseTextFragment({ selected: "Alpha", before: "", after: "[edit]", pageText }), { prefix: "Wait Alphaedit", start: "Alpha" });
+});
+
+test("a longer line isn't taken for a glued label", () => {
+  const title = "Fixed a crash when opening a new window on a Mac running macOS 1";
+  const next = "Thanks to everyone who reported it.";
+  for (const [chrome, after] of [["\n2d", next], ["", `# ${next}`]] as const) {
+    const pageText = `${title}${chrome}\n\n${next}\n\nOlder notes.\n\n${title}5\n\n${next}\n\nWe also tested on a Mac running macOS 1 beta.`;
+    const fragment = chooseTextFragment({ selected: `${title}\n\n`, before: "", after, pageText });
+    assert.notEqual(fragment?.prefix, "notes.");
+  }
+});
+
+test("a trailer on a middle line is never skipped", () => {
+  const head = "Release notes for the desktop app";
+  const run = "Run the installer.";
+  const pageText = `${head} beta this week\nInstall\n${run}\nOlder.\n${head} this week\nInstalls\n${run}`;
+  assert.equal(chooseTextFragment({ selected: `${head} this week\nInstall\n${run}`, before: "", after: "", pageText }), null);
+});
+
+test("a lone glued heading still keeps a copy from winning", () => {
+  const pageText = `${intro}\nUsageedit\n${body}\nSecond intro.\nUsage ${body}`;
+  assert.equal(chooseTextFragment({ selected: `Usage\n${body}`, before: "", after: "", pageText }), null);
 });
 
 test("words split by a comma are words of their own", () => {
