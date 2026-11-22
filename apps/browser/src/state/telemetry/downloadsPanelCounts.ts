@@ -9,13 +9,21 @@ export function noteLinuxDownloadsPanelInsidePress() {
   linuxInsidePresses.note();
 }
 
-const NO_COUNTS = { downloads_panel_press_closes: 0, downloads_panel_held_opens: 0, download_archives_opened: 0 };
+const NO_COUNTS = {
+  downloads_panel_press_closes: 0,
+  downloads_panel_held_opens: 0,
+  download_archives_opened: 0,
+  downloads_kept_past_cap: 0,
+  downloads_live_evicted: 0,
+};
 let counts = { ...NO_COUNTS };
 
 const KEYS = {
   pressClose: "downloads_panel_press_closes",
   heldOpen: "downloads_panel_held_opens",
   archiveOpen: "download_archives_opened",
+  keptPastCap: "downloads_kept_past_cap",
+  liveEvicted: "downloads_live_evicted",
 } as const;
 
 export const noteDownloadsPanel = (event: keyof typeof KEYS, consent?: ConsentToken | null) => countFor(consentOrNow(consent), () => void counts[KEYS[event]]++);

@@ -19,6 +19,9 @@ export type DownloadsSlice = {
 };
 
 const MAX_DOWNLOADS = 100;
+const isUnfinished = (d: Download) => d.state === "downloading";
+const rowsToEvict = (downloads: Download[]) =>
+  [...downloads.filter(isUnfinished), ...downloads.filter((d) => !isUnfinished(d))].slice(MAX_DOWNLOADS - 1);
 
 export function downloadSession(s: Pick<BrowserState, "profiles">, d: Pick<Download, "profile" | "offTheRecord">): string | null {
   if (d.offTheRecord) return d.profile ?? "";
@@ -65,6 +68,7 @@ export const createDownloadsSlice: StateCreator<BrowserState, [], [], DownloadsS
 
   upsertDownload(d) {
     const before = get().downloads;
+    let evicted: Download[] = [];
     set((s) => {
       const listed = s.downloads.find((x) => x.id === d.id);
       if (!d.path && (d.state === "downloading" || d.state === "cancelled")) {
@@ -77,7 +81,8 @@ export const createDownloadsSlice: StateCreator<BrowserState, [], [], DownloadsS
       }
       const record = withoutProgress(d);
       if (listed && shallow(listed, record)) return s;
-      const downloads = listed ? s.downloads.map((x) => (x.id === d.id ? record : x)) : [record, ...s.downloads].slice(0, MAX_DOWNLOADS);
+      if (!listed) evicted = rowsToEvict(s.downloads);
+      const downloads = listed ? s.downloads.map((x) => (x.id === d.id ? record : x)) : [record, ...s.downloads.filter((x) => !evicted.includes(x))];
       const focused = focusedWindowOf(s);
       const newlyHeld = awaitsKeep(d) && !s.downloads.some((x) => x.id === d.id && awaitsKeep(x));
       const open = (!listed || newlyHeld) && focused && downloadVisibleIn(s, d, s.windows[focused]) && !s.windowUi[focused]?.downloadsOpen;
@@ -86,8 +91,10 @@ export const createDownloadsSlice: StateCreator<BrowserState, [], [], DownloadsS
     });
     if (d.state === "downloading" && get().downloads.some((x) => x.id === d.id && x.state === "downloading")) showDownloadProgress(d);
     else forgetDownloadProgress([d.id]);
-    const added = get().downloads !== before && !before.some((x) => x.id === d.id);
-    if (added) forgetDownloadProgress(before.slice(MAX_DOWNLOADS - 1).map((x) => x.id));
+    if (!evicted.length) return;
+    forgetDownloadProgress(evicted.map((x) => x.id));
+    if (evicted.some(isUnfinished)) noteDownloadsPanel("liveEvicted");
+    else if (before.slice(MAX_DOWNLOADS - 1).some(isUnfinished)) noteDownloadsPanel("keptPastCap");
   },
 
   removeDownload(id) {
