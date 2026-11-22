@@ -1,4 +1,4 @@
-import { DEFAULT_THEME_ANGLE, flatColors, lookAngle, themeGrainAlpha, themeLayerAlpha, themeUnderlayAlpha, type ProfileTheme, type ThemeBackdropProps, type ThemeColor, type ThemeLookSource } from "@ardia/core";
+import { DEFAULT_THEME_ANGLE, flatColors, lookAngle, themeGrainAlpha, themeLayerAlpha, themeUnderlayAlpha, type ProfileTheme, type ThemeBackdropProps, type ThemeColor, type ThemeLookSource } from "@ardia/core/src/theme.ts";
 import { parseColor } from "./color";
 
 export {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet } from "react-native";
-import { OPENING_COVER_ID, pageCoverHidden, pageDrawn, pageStateChanged, pageToneChanged, swipedPastHistory } from "../../state/browse/store";
-import { useNavigation, usePageCovered, usePageTone, usePageVeiled } from "../../state/browse/hooks";
+import { ARRIVAL_COVER_ID, OPENING_COVER_ID, pageCoverHidden, pageDrawn, pageStateChanged, pageToneChanged, swipedPastHistory } from "../../state/browse/store";
+import { useNavigation, usePageArriving, usePageCovered, usePageTone, usePageVeiled } from "../../state/browse/hooks";
 import { shownTone } from "../../lib/pageTone";
 import { registerPageHandle } from "../../state/pages/store";
 import { tabSavedState } from "../../state/tabs/store";
@@ -19,6 +19,7 @@ export function PageSurface({ tab, toneBottom, obscured, bottomInsetTransitionMs
   const canReopen = useCanReopen();
   const veiled = usePageVeiled(id);
   const covered = usePageCovered(id);
+  const arriving = usePageArriving(id);
   const tone = usePageTone(id);
   const failed = useNavigation(id, (n) => n?.failure != null);
   const pageTone = failed ? null : shownTone(tone, tab.themeColorHex);
@@ -54,7 +55,7 @@ export function PageSurface({ tab, toneBottom, obscured, bottomInsetTransitionMs
       onPageState={(state) => pageStateChanged(id, state)}
       onPageTone={(tone) => pageToneChanged(id, tone)}
       onPageDrawn={() => pageDrawn(id)}
-      coverNativeId={covered ? OPENING_COVER_ID : undefined}
+      coverNativeId={covered ? (arriving ? ARRIVAL_COVER_ID : OPENING_COVER_ID) : undefined}
       onPageCoverHidden={(reason) => pageCoverHidden(id, reason)}
     />
   );
