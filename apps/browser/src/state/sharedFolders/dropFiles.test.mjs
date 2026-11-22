@@ -337,3 +337,15 @@ for (const blank of ["about:blank", ""]) {
     assert.equal(f.bound(), true, "still shared");
   });
 }
+
+test("a tab dropped on a split leaves the other pane in its subfolder", async () => {
+  const f = await shared(["alpha", "untouched", "stay"], { sub: ["untouched"] });
+  const id = `split-subfolder-${runs}`;
+  const slots = [f.id.alpha, f.id.untouched].map((tabId) => ({ size: 0.5, tabId }));
+  useBrowser.setState((s) => ({ splits: { ...s.splits, [id]: { id, windowId: f.w, orientation: "horizontal", slots } } }));
+  await f.sync();
+  const dropped = S().newTab(f.w, { url: `https://dropped${runs}.example/`, background: true });
+  S().updateTab(dropped, { customTitle: "dropped" });
+  dropTabOnRow(dropped, f.id.alpha, "left");
+  await afterwards(f, ["Docs/untouched.webloc", "alpha.webloc", "dropped.webloc", "stay.webloc"]);
+});

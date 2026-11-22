@@ -5,7 +5,7 @@ import { ASLEEP, hasPage } from "../tabs/pageSession";
 import { isRegularWindow } from "../windows/small";
 import { removeFromSplits, splitOf, splitTabIdsOf } from "../splits/splits";
 import { groupKeptOpen } from "./closeGuard";
-import { ancestorIds, orderSections, placeGroups, syncGroupOrder } from "./groups";
+import { ancestorIds, innermostGroupOf, orderSections, placeGroups, syncGroupOrder } from "./groups";
 
 export const EMPTY_FOLDER_URL = "about:blank";
 const EMPTY_FOLDER_TITLE = "Empty Folder";
@@ -28,8 +28,10 @@ export function withoutEmptyFolderRows(s: BrowserState, ids: string[]): string[]
 export const outsideKeptFolders = (s: BrowserState, ids: string[]) =>
   ids.filter((id) => !Object.values(s.groups).some((g) => g.tabIds.includes(id) && groupKeptOpen(g.id)));
 
-export const keptFolderOf = (s: Pick<BrowserState, "groups">, id: string) =>
-  Object.values(s.groups).find((g) => g.pinned && !g.parentId && g.tabIds.includes(id) && groupKeptOpen(g.id))?.id;
+export function keptFolderOf(s: Pick<BrowserState, "groups">, id: string): string | undefined {
+  const inner = innermostGroupOf(s.groups, id);
+  return inner?.pinned && [inner.id, ...ancestorIds(s.groups, inner.id)].some(groupKeptOpen) ? inner.id : undefined;
+}
 
 export function apartAtKeptFolderEdge(s: BrowserState, anchorId: string, members: string[], joining: string[], paired: string[]): [BrowserState, string[]] {
   const home = keptFolderOf(s, anchorId);
