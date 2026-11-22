@@ -3,6 +3,27 @@ name: Deploy
 on:
   push:
     branches: [main]
+    paths:
+      - "infra/site/**"
+      - "apps/site/**"
+      - "packages/demo/**"
+      - "apps/browser/src/**"
+      - "packages/*/src/**"
+      - "packages/*/package.json"
+      - "docs/release-notes/**"
+      - "docs/brand/ardia/source/mark.png"
+      - "engine/patches/build/ardia-icons/**"
+      - "apps/browser/macos/Ardia-macOS/Assets.xcassets/AppIcon.appiconset/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "patches/**"
+      - "infra/dashboard/**"
+      - "apps/dashboard/**"
+      - "packages/core/src/anonymousIdentity.ts"
+      - "infra/telemetry/hexclave.deploy.ts"
+      - "infra/telemetry/clickhouse/**"
+      - "infra/telemetry/collector/**"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
     inputs:
       service:

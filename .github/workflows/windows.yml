@@ -10,13 +10,14 @@ on:
       - "apps/browser/metro.config.js"
       - "apps/browser/src/**"
       - "packages/*/src/**"
+      - "!packages/phone/**"
       - "apps/browser/package.json"
       - "packages/expo-windows/**"
       - "scripts/windows/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/windows.yml"
   push:
-    branches: [main, t3/windows-linux-release-priority]
+    branches: [main]
     paths:
       - "apps/browser/windows/**"
       - "apps/browser/NuGet.config"
@@ -25,6 +26,7 @@ on:
       - "apps/browser/metro.config.js"
       - "apps/browser/src/**"
       - "packages/*/src/**"
+      - "!packages/phone/**"
       - "apps/browser/package.json"
       - "packages/expo-windows/**"
       - "scripts/windows/**"
