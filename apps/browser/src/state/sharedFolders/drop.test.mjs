@@ -12,6 +12,7 @@ const { dropTabsOutside } = await import("../drag/windowDrop.ts");
 const { bindFolder } = await import("./store.ts");
 const { confirmRemovingShared, sharedFolderOfGroup } = await import("./removal.ts");
 const { folderPlace } = await import("./engine.ts");
+const { knownNames, localFolder } = await import("./local.ts");
 const { foreignWriteHooks } = await import("../browser/foreignWriteHooks.ts");
 const { devTabPresses } = await import("../telemetry/tabPresses.ts");
 const { setConsentPeriod } = await import("../telemetry/consentPeriod.ts");
@@ -255,4 +256,18 @@ test("the confirmed move is the user's own write, not a running automation comma
   await settle();
   assert.equal(S().groups[f.team].pinned, false);
   assert.equal(writes, 1);
+});
+
+test("dragging a link out of a ⌘-click shared folder leaves its subfolder, and the files in it, alone", () => {
+  const f = sidebar({ links: 2 });
+  const docs = S().groupTabs([f.ids[1]], { name: "Docs" });
+  assert.equal(S().groups[docs].parentId, f.team, "setup: Docs is inside the shared folder");
+  useBrowser.setState((s) => ({ groups: { ...s.groups, [f.team]: { ...s.groups[f.team], autoUngroup: true } } }));
+  const entries = () => localFolder(S(), f.team, knownNames([])).entries;
+  const before = entries().filter((e) => e.kind === "dir");
+  dropTab(f.ids[0], { zone: "list", beforeId: null });
+  assert.equal(S().groups[docs].parentId, f.team);
+  assert.deepEqual(S().groups[f.team].tabIds, [f.ids[1]]);
+  assert.deepEqual(entries(), before, "the sync engine sees the same Docs and nothing at the root");
+  staysShared(f);
 });

@@ -42,6 +42,11 @@ export function withEmptiedFoldersKept(before: BrowserState, after: BrowserState
     }
     const { autoUngroup: _, ...kept } = g;
     const groups = { ...next.groups, [g.id]: { ...kept, tabIds: members } };
+    for (const child of Object.values(before.groups)) {
+      const chain = ancestorIds(before.groups, child.id);
+      if (!groups[child.id] || !chain.includes(g.id)) continue;
+      groups[child.id] = { ...groups[child.id]!, parentId: chain.find((id) => groups[id]) };
+    }
     const window = { ...w, tabIds: orderSections(placeGroups(tabIds, groups, w.id), tabs, groups) };
     next = { ...next, tabs, groups: syncGroupOrder(groups, window), windows: { ...next.windows, [w.id]: window } };
   }
