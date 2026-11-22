@@ -362,7 +362,10 @@ It covers profiles that share another's data (tabs are each profile's own).
   elsewhere, or turns Open Tabs off, forgets its base for them. Every Mac keeps the tabs it has. Turning it on is a
   union: this Mac's tabs publish and the live records arrive, matched by page as above.
 - **Known residuals.** A page a Mac navigated to just before quitting, before a sync sent it, isn't sent after the
-  relaunch until that copy navigates again. A tab closed in the last moments before a crash (not a quit) can come back.
+  relaunch until that copy navigates again. The same goes for a closed tab that another Mac's pin brings back: its
+  last page is forgotten once no tab has its key and the close is published, so if a newer record arrives while it is
+  pinned, a page it went to before the unpin waits for its next navigation. A tab closed in the last moments before a
+  crash (not a quit) can come back.
   A tab another Mac changes while this one closes it can come back by last-writer-wins. A Mac offline while the switch
   went off and on again sees only the newer `otab:on`, so the deletions close the tabs only it had. Two Macs that turn
   the switch on before either has synced, with the same page open under different tabs, keep both copies. Tabs another Mac published

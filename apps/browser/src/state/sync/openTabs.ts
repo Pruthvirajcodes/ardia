@@ -23,6 +23,12 @@ function pagesSeenIn(state: ScopeState) {
   return seen;
 }
 
+function keysInUse(s: BrowserState) {
+  const keys = new Set([...Object.keys(s.tabs), ...Object.values(s.tabs).map(pinKeyOf)]);
+  for (const parked of Object.values(s.parkedPins)) for (const p of parked.tabs) keys.add(p.id);
+  return keys;
+}
+
 function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCloses, base: (key: string) => unknown, remote: (key: string) => unknown): Extraction {
   const s = store();
   const { synced, pinned } = localOpenTabs(s, profileId);
@@ -34,6 +40,8 @@ function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCl
     if (tab === undefined) baseTabs.set(key, (tab = openTabValue(base(`${OPEN_TAB}${key}`))));
     return tab;
   };
+  let inUse: Set<string> | null = null;
+  for (const key of seen.keys()) if (!baseTab(key) && !(inUse ??= keysInUse(s)).has(key)) seen.delete(key);
   const positions = new Map<string, string>();
   for (const w of new Set(synced.map(({ tab }) => tab.windowId))) {
     const here = synced.filter(({ tab }) => tab.windowId === w);
