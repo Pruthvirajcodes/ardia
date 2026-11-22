@@ -13,7 +13,7 @@ import { withPrivateWindow } from "./hostWindowProfiles.ts";
 import { withSmallWindow } from "./hostSmallWindows.ts";
 import { sessionWithSplitSlots, sessionWithTabPages, sessionWithTabPins } from "../../browser/src/state/session/savedShapes";
 import { splitTabIds } from "../../browser/src/state/splits/splits";
-import { sessionWithPinChoiceStamps } from "../../browser/src/state/pins/pinChoices";
+import { isPinChoices, stampedPinChoices } from "../../browser/src/state/pins/pinChoices";
 import { upgraded, type SavedObject } from "../../browser/src/lib/savedDocument";
 import { SESSION_MIGRATIONS, SESSION_VERSION } from "../../browser/src/state/session/persist";
 import { unclaimedAdoptId } from "./unclaimedTabs.ts";
@@ -87,10 +87,8 @@ const legacySession = (session: HydrateData) =>
   Object.values(session.tabs ?? {}).some(legacyTab) || Object.values(session.windows ?? {}).some(legacyWindow) ||
   Object.values(session.splits ?? {}).some(legacySplit) || legacyEntries(session);
 
-const legacyPinChoices = (session: HydrateData) =>
-  Object.values(session.pinChoices ?? {}).some((mine) => Object.values(mine ?? {}).some((choice) => typeof choice !== "string"));
-const withPinChoiceStamps = (session: HydrateData) =>
-  legacyPinChoices(session) ? sessionWithPinChoiceStamps(session as unknown as SavedObject) as unknown as HydrateData : session;
+const withPinChoiceStamps = (session: HydrateData): HydrateData =>
+  session.pinChoices === undefined || isPinChoices(session.pinChoices) ? session : { ...session, pinChoices: stampedPinChoices(session.pinChoices) };
 
 const withAutoHideTabsSetting = (session: HydrateData): HydrateData => {
   const windows = Object.values(session.windows ?? {});

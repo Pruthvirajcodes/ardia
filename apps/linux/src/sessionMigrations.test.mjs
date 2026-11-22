@@ -180,3 +180,22 @@ test("a session that only lacks the version stamp launches like a stamped one, a
     rig.restore();
   }
 });
+
+test("malformed pin choices don't stop the launch, and only well-formed ones are shared between windows", () => {
+  const launchWith = (pinChoices) => {
+    const saved = { ...olderSession(), version: SESSION_VERSION, pinChoices };
+    useBrowser.getState().hydrate(initialLinuxSession(host(), saved));
+    assert.deepEqual(useBrowser.getState().windowOrder, ["main"]);
+    return linuxSessionShape(saved).pinChoices;
+  };
+  const kept = { key: "0mwo1usf5.0001." };
+  for (const bad of [null, 7, "stamp", [], [null]]) {
+    assert.deepEqual(launchWith({ default: bad, work: kept }), { default: {}, work: kept }, `profile choices ${JSON.stringify(bad)}`);
+  }
+  for (const bad of [null, {}, [], true]) {
+    assert.deepEqual(launchWith({ default: { bad, ...kept } }), { default: kept }, `stamp ${JSON.stringify(bad)}`);
+  }
+  for (const bad of [null, 7, "stamp", [null], [[0]]]) {
+    assert.deepEqual(launchWith(bad), {}, `every profile's choices ${JSON.stringify(bad)}`);
+  }
+});
