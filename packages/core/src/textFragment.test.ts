@@ -192,6 +192,65 @@ test("a range that ends before a possessive takes it as the suffix", () => {
   assert.ok(fragment?.suffix?.startsWith("'s"));
 });
 
+test("an edge ICU may join across takes a prefix or suffix", () => {
+  for (const joiner of ["\u200c", "\u200d", "\u2060", "\uff07", "\ufe52", "\u0387", "\u055f", "\u203f", "\uff3f", "\u202f"]) {
+    const pageText = `Read Bob${joiner}Alice first then ask Alice today.`;
+    const first = chooseTextFragment({ selected: "Alice", before: `Read Bob${joiner}`, after: " first then ask Alice today.", pageText });
+    assert.ok(first?.prefix, `U+${joiner.charCodeAt(0).toString(16)} before`);
+    const flipped = `Read Alice${joiner}Bob first then ask Alice today.`;
+    const second = chooseTextFragment({ selected: "Alice", before: "Read ", after: `${joiner}Bob first then ask Alice today.`, pageText: flipped });
+    assert.ok(second?.suffix, `U+${joiner.charCodeAt(0).toString(16)} after`);
+  }
+});
+
+test("a word the page text's cap cut is never part of a term", () => {
+  const tail = `\nRead Alice's${"x".repeat(50)}\ud83d`;
+  const pageText = "ab\n".repeat(1_000_001).slice(0, 3_000_000 - tail.length) + tail;
+  const fragment = chooseTextFragment({ selected: "Alice", before: "Read ", after: `'s${"x".repeat(50)}\ud83d\ude80 end`, pageText });
+  assert.equal(fragment, null);
+});
+
+test("a suffix starts at its word, however wide the gap", () => {
+  const fragment = chooseTextFragment({ selected: "Alpha", before: "", after: "\u00a0 beta", pageText: "first\nAlpha one\nfirst\nAlpha\u00a0 beta" });
+  assert.equal(fragment?.suffix, "beta");
+});
+
+test("a short suffix still pairs with a longer prefix", () => {
+  const fragment = chooseTextFragment({ selected: "Alice", before: "Carol saw ", after: "'s", pageText: "Bob saw Alice's\nCarol saw Alice's" });
+  assert.deepEqual(fragment, { prefix: "Carol saw", start: "Alice", suffix: "'s" });
+});
+
+test("hiragana and katakana are seen as an earlier match", () => {
+  for (const [above, selected] of [["かたかな", "カタカナ"], ["カタカナ", "かたかな"], ["かたかな", "ｶﾀｶﾅ"], ["colŀegi", "collegi"]] as const) {
+    const fragment = chooseTextFragment({ selected, before: "", after: "", pageText: `${above}\n${selected}` });
+    assert.ok(!fragment || fragment.prefix || fragment.suffix, `${above} would match first`);
+  }
+});
+
+test("context the page shows in capitals still places the selection", () => {
+  const pageText = "CHAPTER ONE: THE BEGINNING\nCHAPTER TWO: THE BEGINNING";
+  assert.equal(chooseTextFragment({ selected: "THE BEGINNING", before: "Chapter two: ", after: "", pageText })?.prefix, "TWO:");
+});
+
+test("a term never holds a run of spaces, which an image leaves in the page's text", () => {
+  const fragment = chooseTextFragment({ selected: "Ship it  today", before: "", after: "", pageText: "Intro.\nShip it  today" });
+  assert.deepEqual(fragment, { start: "Ship it", end: "today" });
+});
+
+test("what differs early in a long paragraph still places the selection", () => {
+  const rest = "release of the product, which shipped in early spring of the year, the team ";
+  const tail = " when opening very large files from the network.";
+  const pageText = `In the first ${rest}fixed a crash${tail}\nIn the second ${rest}fixed a crash${tail}`;
+  assert.deepEqual(chooseTextFragment({ selected: "fixed a crash", before: `In the first ${rest}`, after: tail, pageText }), { start: "fixed a crash" });
+});
+
+test("Hebrew finals, Arabic letters and digits are seen as an earlier match", () => {
+  for (const [above, selected] of [["שלומ", "שלום"], ["مدرسه", "مدرسة"], ["علي", "على"], ["كـتاب", "كتاب"], ["٤٢", "42"]] as const) {
+    const fragment = chooseTextFragment({ selected, before: "", after: "", pageText: `${above}\n${selected}` });
+    assert.ok(!fragment || fragment.prefix || fragment.suffix, `${above} would match first`);
+  }
+});
+
 test("words split by a comma are words of their own", () => {
   assert.equal(chooseTextFragment({ selected: "world", before: "hello,", after: "", pageText: "hello,world" })?.start, "world");
 });

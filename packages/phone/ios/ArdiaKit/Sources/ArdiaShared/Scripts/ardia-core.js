@@ -3524,15 +3524,19 @@ const RANGE_WORDS = 3;
 const MAX_TERM_WORDS = 12;
 const MAX_CONTEXT_WORDS = 5;
 const CONTEXT_CHARS = 200;
-const SCORED_CHARS = 48;
+const CAPPED_CONTEXT_CHARS = 48;
 const PAGE_TEXT_CAP = 3_000_000;
 const CHUNK_CHARS = 32_768;
 
-const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u;
+const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\u30fc\uff70]/u;
 const WORD_CHAR = /[\p{L}\p{N}\p{M}_]/u;
-const LETTER_JOINER = /[.'’:·״‧]/;
-const DIGIT_JOINER = /[.'’,;٫٬]/;
-const TERM_WORD = /[^\s。、，．！？：；「」『』（）]+[。、，．！？：；「」『』（）]*|[。、，．！？：；「」『』（）]+/g;
+const JOINABLE = /[\p{L}\p{N}\p{M}\p{Cf}\p{Pc}\u202f]/u;
+const FOLDS                         = {
+  ß: "ss", œ: "oe", æ: "ae", ø: "o", đ: "d", ð: "d", ł: "l", ħ: "h", ς: "σ", "„": '"',
+  ך: "כ", ם: "מ", ן: "נ", ף: "פ", ץ: "צ", ة: "ه", ى: "ي", "\u0640": "",
+};
+const FOLDABLE = new RegExp(`[${Object.keys(FOLDS).join("")}]`, "g");
+const TERM_WORD = /(?:[^\s。、，．！？：；「」『』（）]|\u202f)+[。、，．！？：；「」『』（）]*|[。、，．！？：；「」『』（）]+/g;
 
 function mapChunks(text        , map                           )         {
   if (text.length <= CHUNK_CHARS) return map(text);
@@ -3550,8 +3554,8 @@ const collapsed = (raw        ) =>
   mapChunks(raw, (chunk) =>
     chunk
       .replace(/­+/g, "")
-      .replace(/[\t\r\f\v  -  　]+/g, (space) => (space.includes("\t") ? "\n" : " "))
-      .replace(/ *\n[\n ]*/g, "\n"),
+      .replace(/[\t\r\f\v  - 　]+/g, (space) => (space.includes("\t") ? "\n" : " "))
+      .replace(/[ \n]{2,}/g, "\n"),
   ).trim();
 
 function looselyFolded(text        )         {
@@ -3559,19 +3563,15 @@ function looselyFolded(text        )         {
     const lower = chunk.toLowerCase().replace(/\n/g, " ").replace(/ {2,}/g, " ");
     if (!/[^\x00-\x7f]/.test(lower)) return lower;
     return lower
+      .replace(/\u0140/g, "l")
       .normalize("NFKD")
       .toLowerCase()
       .replace(/[\p{M}\p{Cf}]+/gu, "")
       .replace(/[‘’׳]/g, "'")
       .replace(/[“”״]/g, '"')
-      .replace(/ß/g, "ss")
-      .replace(/œ/g, "oe")
-      .replace(/æ/g, "ae")
-      .replace(/ø/g, "o")
-      .replace(/[đð]/g, "d")
-      .replace(/ł/g, "l")
-      .replace(/ħ/g, "h")
-      .replace(/ς/g, "σ");
+      .replace(FOLDABLE, (char) => FOLDS[char] )
+      .replace(/[\u0660-\u0669\u06f0-\u06f9]/g, (digit) => String(digit.charCodeAt(0) & 15))
+      .replace(/[\u30a1-\u30f6]/g, (kana) => String.fromCharCode(kana.charCodeAt(0) - 0x60));
   });
 }
 
@@ -3594,18 +3594,16 @@ function isInsideWord(text        , at        )          {
   return isWordChar(charBefore(text, at)) && isWordChar(charAfter(text, at));
 }
 
-function joins(joiner        , left                    , right                    )          {
-  if (!left || !right || !isWordChar(left) || !isWordChar(right)) return false;
-  return (/\p{N}/u.test(left) && /\p{N}/u.test(right) ? DIGIT_JOINER : LETTER_JOINER).test(joiner);
-}
+const isJoinable = (char                    ) => !!char && JOINABLE.test(char);
 
 function isSureWordEdge(text        , at        )          {
   const left = charBefore(text, at);
   const right = charAfter(text, at);
   if (!left || !right) return true;
-  if (UNSPACED.test(left) && UNSPACED.test(right)) return false;
-  if (isWordChar(left) && isWordChar(right)) return false;
-  return !joins(right, left, charAfter(text, at + right.length)) && !joins(left, charBefore(text, at - left.length), right);
+  if (isJoinable(left) && isJoinable(right)) return false;
+  if (isJoinable(left) && !/\s/.test(right)) return !isJoinable(charAfter(text, at + right.length));
+  if (isJoinable(right) && !/\s/.test(left)) return !isJoinable(charBefore(text, at - left.length));
+  return true;
 }
 
 function wordRunBefore(text        )         {
@@ -3632,12 +3630,14 @@ function toWordBoundaries(context                  )                   {
   };
 }
 
+const sameLetter = (a        , b        ) => a === b || a.toLowerCase() === b.toLowerCase();
+
 function sharedBefore(text        , at        , context        )         {
   let shared = 0;
   for (let i = at - 1; i >= 0 && shared < context.length; i--) {
     const char = text[i] ;
-    if (char === " " || char === "\n") continue;
-    if (char !== context[context.length - 1 - shared]) break;
+    if (char === " " || char === "\n" || char === "\u202f") continue;
+    if (!sameLetter(char, context[context.length - 1 - shared] )) break;
     shared++;
   }
   return shared;
@@ -3647,8 +3647,8 @@ function sharedAfter(text        , at        , context        )         {
   let shared = 0;
   for (let i = at; i < text.length && shared < context.length; i++) {
     const char = text[i] ;
-    if (char === " " || char === "\n") continue;
-    if (char !== context[shared]) break;
+    if (char === " " || char === "\n" || char === "\u202f") continue;
+    if (!sameLetter(char, context[shared] )) break;
     shared++;
   }
   return shared;
@@ -3657,9 +3657,8 @@ function sharedAfter(text        , at        , context        )         {
 function selectionSpan(text        , { selected, before, after }                  , truncated         )              {
   const wanted = collapsed(selected);
   if (!wanted) return null;
-  const left = collapsed(before.slice(-CONTEXT_CHARS)).replace(/\s/g, "").slice(-SCORED_CHARS);
-  const right = collapsed(after.slice(0, CONTEXT_CHARS)).replace(/\s/g, "").slice(0, SCORED_CHARS);
-  const wholeContext = left.length + right.length;
+  const left = collapsed(before.slice(-CONTEXT_CHARS)).replace(/\s/g, "");
+  const right = collapsed(after.slice(0, CONTEXT_CHARS)).replace(/\s/g, "");
   const bestIn = (haystack        , needle        )                          => {
     let best                         ;
     let bestScore = -1;
@@ -3667,8 +3666,11 @@ function selectionSpan(text        , { selected, before, after }                
       const to = from + needle.length;
       if (!left && from > 0 && text[from - 1] !== "\n") continue;
       if (!right && to < text.length && text[to] !== "\n") continue;
-      const score = (left ? sharedBefore(text, from, left) : 0) + (right ? sharedAfter(text, to, right) : 0);
-      if (score < bestScore || (truncated && (!wholeContext || score < wholeContext))) continue;
+      const leftShared = left ? sharedBefore(text, from, left) : 0;
+      const rightShared = right ? sharedAfter(text, to, right) : 0;
+      const score = leftShared + rightShared;
+      if (score < bestScore) continue;
+      if (truncated && (!score || leftShared < Math.min(CAPPED_CONTEXT_CHARS, left.length) || rightShared < Math.min(CAPPED_CONTEXT_CHARS, right.length))) continue;
       if (isInsideWord(text, from) || isInsideWord(text, to)) continue;
       best = score === bestScore ? null : { from, to };
       bestScore = score;
@@ -3685,14 +3687,18 @@ function wordsIn({ text }      , { from, to }      )         {
 }
 
 function prefixesFor(page      , from        )         {
-  const to = /\s/.test(page.text[from - 1] ?? "") ? from - 1 : from;
+  let to = from;
+  while (to > 0 && page.text[to - 1] !== "\n" && /\s/.test(page.text[to - 1] )) to--;
+  if (page.text[to - 1] === "\n") to--;
   if (to <= 0) return [];
   const line = { from: page.text.lastIndexOf("\n", to - 1) + 1, to };
   return wordsIn(page, line).slice(-MAX_CONTEXT_WORDS).reverse().map((word) => ({ from: word.from, to }));
 }
 
 function suffixesFor(page      , to        )         {
-  const from = /\s/.test(page.text[to] ?? "") ? to + 1 : to;
+  let from = to;
+  while (from < page.text.length && page.text[from] !== "\n" && /\s/.test(page.text[from] )) from++;
+  if (page.text[from] === "\n") from++;
   const lineEnd = page.text.indexOf("\n", from);
   const line = { from, to: lineEnd === -1 ? page.text.length : lineEnd };
   return wordsIn(page, line).slice(0, MAX_CONTEXT_WORDS).map((word) => ({ from, to: word.to }));
@@ -3719,7 +3725,9 @@ function exactFragment(page      , target        )                      {
   for (let n = 0; n < MAX_CONTEXT_WORDS; n++) {
     if (prefixes[n]) contexts.push([prefixes[n], undefined]);
     if (suffixes[n]) contexts.push([undefined, suffixes[n]]);
-    if (prefixes[n] && suffixes[n]) contexts.push([prefixes[n], suffixes[n]]);
+    const prefix = prefixes[n] ?? prefixes[prefixes.length - 1];
+    const suffix = suffixes[n] ?? suffixes[suffixes.length - 1];
+    if (prefix && suffix) contexts.push([prefix, suffix]);
   }
   const needsPrefix = !isSureWordEdge(page.text, target.from);
   const needsSuffix = !isSureWordEdge(page.text, target.to);
@@ -3781,10 +3789,16 @@ function rangeFragment(page      , target        )                      {
   };
 }
 
+function withoutCutWord(text        )         {
+  let to = text.length;
+  while (to > 0 && !/\s/.test(text[to - 1] )) to--;
+  return text.slice(0, to);
+}
+
 function chooseTextFragment(context                  )                      {
-  const page = pageOf(context.pageText);
-  const widened = toWordBoundaries(context);
   const truncated = context.pageText.length >= PAGE_TEXT_CAP;
+  const page = pageOf(truncated ? withoutCutWord(context.pageText) : context.pageText);
+  const widened = toWordBoundaries(context);
   const span =
     selectionSpan(page.text, widened, truncated) ?? (widened.selected === context.selected ? null : selectionSpan(page.text, context, truncated));
   if (!span) return null;
