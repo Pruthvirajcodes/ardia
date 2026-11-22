@@ -1692,7 +1692,13 @@ It works as on the Mac ([cli.md](cli.md), [automation.md](automation.md)); what 
     gives `ArdiaCli.install` 330 s (`bootstrap.js`). The result is parsed as on the Mac (`ok`,
     `appVersion`, `binPath`, `version`, `rcFile`, `error`, `lines`, `status`, `installedVersion`), and a version that
     doesn't match `^[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$` is refused.
-  - The launcher is `bin/ardia` and the CLI links `~/.local/bin/ardia`; they don't collide.
+  - The launcher is `bin/ardia` and the CLI links `~/.local/bin/ardia`. Where `~/.local/bin` comes after the
+    launcher's folder on `PATH` (Omarchy appends it), `ardia` finds the launcher, so the launcher hands a first
+    argument that is a command word (ASCII lowercase letters, digits and `-`, not a file in the current folder) to
+    `${ARDIA_CLI_HOME:-$XDG_DATA_HOME/ardia/cli}/current/bin/ardia` when it is installed, with `~/.local/share` for an
+    unset or relative `XDG_DATA_HOME`, as its installer does. It never does as root. URLs, dotted hosts, hosts with a
+    port, files and switches still open in the browser; a bare word like `localhost` reaches the command, as it does
+    when the command comes first on `PATH`.
   - An instance started with its own `--user-data-dir` is a test instance: it installs only with both
     `ARDIA_CLI_HOME` and `ARDIA_CLI_BIN_DIR` set, and reports no installed version without `ARDIA_CLI_HOME`.
 - **Config files** ([config.md](config.md)). `config.json` and `themes/` live in `<user data dir>/config`
