@@ -38,6 +38,8 @@ test("closing a Peek through either call ends the Peek and records nothing", () 
 
 function visitedInOrder(t, ...hosts) {
   t.mock.timers.enable({ apis: ["Date"], now: 1_700_000_000_000 });
+  setConsentPeriod(true, "closing-test");
+  t.after(() => setConsentPeriod(false, null));
   useLifecycle.setState({ discarded: {} });
   const { w, ids } = windowWith(hosts[0]);
   for (const h of hosts.slice(1)) {
@@ -58,10 +60,27 @@ test("⌘W on the front tab switches to an awake tab and leaves a tab put to sle
   assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 0);
 });
 
+test("⌘W on a pinned tab in front switches to an awake regular tab, not one put to sleep", (t) => {
+  const { w, ids: [a, b, p] } = visitedInOrder(t, "a", "b", "p");
+  S().pinTabs([p], true);
+  S().activate(p);
+  noteDiscarded(b, "external");
+  S().closeTab(p);
+  assert.equal(activeTabId(S(), w), a);
+  assert.equal(isSleeping(b), true);
+  assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 0);
+  noteDiscarded(a, "proactive");
+  S().activate(p);
+  takeTabSleepCounts();
+  S().closeTab(p);
+  assert.equal(activeTabId(S(), w), a, "with every regular tab asleep it still picks the one used last");
+  assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 1);
+});
+
 test("⌘W with only sleeping tabs left still switches to the one used last, and counts the wake while sharing is on", (t) => {
   for (const sharing of [true, false]) {
-    setConsentPeriod(sharing, "epoch");
     const { w, ids: [a, b, c] } = visitedInOrder(t, "a", "b", "c");
+    setConsentPeriod(sharing, "closing-test");
     noteDiscarded(a, "proactive");
     noteDiscarded(b, "external");
     assert.equal(successorWhenLeaving([c], w), b, "a drag's preview of the close");
@@ -71,7 +90,6 @@ test("⌘W with only sleeping tabs left still switches to the one used last, and
     assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, sharing ? 1 : 0);
     t.mock.timers.reset();
   }
-  setConsentPeriod(false, null);
 });
 
 test("⌘W on the last tab closes the window; closing every tab at once keeps it with a New Tab", () => {
