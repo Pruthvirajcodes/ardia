@@ -67,7 +67,7 @@ const { syncFolderNow } = await import("./engine.ts");
 
 const S = () => useBrowser.getState();
 guardGroupClose(confirmRemovingShared);
-keepGroupsOpen((groupId) => !!sharedFolderOfGroup(S(), groupId));
+keepGroupsOpen((groupId, s = S()) => !!sharedFolderOfGroup(s, groupId));
 startPersistence();
 const flush = () => new Promise(setImmediate);
 const LIST = { zone: "list", beforeId: null };
@@ -349,3 +349,47 @@ test("a tab dropped on a split leaves the other pane in its subfolder", async ()
   dropTabOnRow(dropped, f.id.alpha, "left");
   await afterwards(f, ["Docs/untouched.webloc", "alpha.webloc", "dropped.webloc", "stay.webloc"]);
 });
+
+for (const names of [["only"], ["alpha", "beta"]]) {
+  test(`a torn-off copy of one of ${names.length} links dragged back to a profile whose pins are parked changes no file`, async () => {
+    const { f, tab } = await tornOff(names);
+    const work = S().createProfile({ name: "Work" });
+    const there = S().createWindow({ profileId: work, url: `https://work${runs}.example/` });
+    const away = S().tabs[tab].windowId;
+    S().dropTabsInProfile([tab], work, { type: "none" });
+    S().moveTabsToWindow([tab], there);
+    S().pinTabs([tab], true, false);
+    for (const w of [f.w, away]) if (S().windows[w]) S().closeWindow(w);
+    await f.sync();
+    assert.ok(S().parkedPins[f.profileId], "setup: the folder's pins are parked");
+    assert.deepEqual(f.files(), f.before);
+    S().dropTabsInProfile([tab], f.profileId, { type: "none" });
+    await afterwards(f, f.before);
+  });
+
+  for (const [how, act] of [
+    ["the copy onto another tab's row", (copy, other) => dropTabOnRow(copy, other, "right")],
+    ["another tab onto the copy's page", (copy, other) => dropTabIntoSplit(other, copy, "right")],
+  ]) {
+    test(`with tabs shared across windows, dragging ${how} keeps the files of ${names.length} links`, async () => {
+      const f = await shared(names);
+      useBrowser.setState((s) => ({ settings: { ...s.settings, shareTabsAcrossWindows: true } }));
+      S().activate(f.id[names[0]]);
+      const second = S().createWindow({ profileId: f.profileId });
+      await f.sync();
+      useBrowser.setState((s) => ({ windows: Object.fromEntries(Object.entries(s.windows).map(([id, w]) => [id, { ...w, frame: [0, 0, 800, 600] }])) }));
+      const inFolder = (id) => Object.values(S().groups).some((g) => g.pinned && g.tabIds.includes(id));
+      const copy = S().windows[second].tabIds.find((id) => inFolder(id) && pinKeyOf(S().tabs[id]) === f.id[names[0]]);
+      S().setFocusedWindow(second);
+      beginTabDrag(copy, [copy]);
+      updateTabDrag(3000, 300);
+      endTabDrag();
+      await f.sync();
+      assert.deepEqual(f.files(), f.before);
+      const away = S().tabs[copy].windowId;
+      act(copy, S().windows[away].tabIds.find((id) => id !== copy && !S().tabs[id].pin && !inFolder(id)));
+      await afterwards(f, f.before);
+      useBrowser.setState((s) => ({ settings: { ...s.settings, shareTabsAcrossWindows: false } }));
+    });
+  }
+}

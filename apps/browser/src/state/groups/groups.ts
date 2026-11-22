@@ -101,7 +101,7 @@ export function leaveGroups(groups: Record<string, TabGroup>, ids: Set<string>, 
 }
 
 const staysWithOneTab = (groups: Record<string, TabGroup>, g: TabGroup) =>
-  !g.autoUngroup || !!g.pinnedOpenerId || [g.id, ...ancestorIds(groups, g.id)].some(groupKeptOpen);
+  !g.autoUngroup || !!g.pinnedOpenerId || [g.id, ...ancestorIds(groups, g.id)].some((id) => groupKeptOpen(id));
 
 type GroupInfo = ClosedGroupInfo;
 

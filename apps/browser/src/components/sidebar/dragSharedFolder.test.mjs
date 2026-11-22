@@ -14,7 +14,7 @@ const { devTabPresses } = await import("../../state/telemetry/tabPresses.ts");
 const { S, entryKey, mount, sceneLayout, centre } = D;
 
 guardGroupClose(confirmRemovingShared);
-keepGroupsOpen((groupId) => !!sharedFolderOfGroup(S(), groupId));
+keepGroupsOpen((groupId, s = S()) => !!sharedFolderOfGroup(s, groupId));
 
 test("a shared folder's drop that waits for an answer moves nothing: not its live folder, its landing or the drop count", async (t) => {
   const real = shellNativeModules.ArdiaDialogs.confirm;

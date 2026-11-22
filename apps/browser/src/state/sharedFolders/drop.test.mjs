@@ -21,7 +21,7 @@ const { setConsentPeriod } = await import("../telemetry/consentPeriod.ts");
 
 const S = () => useBrowser.getState();
 guardGroupClose(confirmRemovingShared);
-keepGroupsOpen((groupId) => !!sharedFolderOfGroup(S(), groupId));
+keepGroupsOpen((groupId, s = S()) => !!sharedFolderOfGroup(s, groupId));
 const settle = () => new Promise(setImmediate);
 
 function answering(t, confirmed) {

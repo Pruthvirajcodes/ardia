@@ -33,8 +33,8 @@ Arc had shared folders; Dia has none, so this is an Ardia extra (`docs/dia-featu
   itself can't be dragged out. A window's last tab dropped on another window takes its folder along, link and all.
 - A tab torn out of a shared folder is still that link until it is pinned or grouped outside it: then it takes a pin
   key of its own (`state/pins/keptFolderCopies.ts`, from the pin mirror, which every path goes through), so the
-  folder keeps its link and file. A split never takes a pane across a shared folder's edge unless that pane is the
-  one dragged (`apartAtKeptFolderEdge`).
+  folder keeps its link and file. A tab dropped on a split doesn't take the other panes across the edge of a shared
+  folder or of a folder in it (`apartAtKeptFolderEdge`); dragging a whole split row takes every pane it shows.
 - A shared folder and the folders in it stay with one link left, also one made by ⌘-click, which otherwise
   ungroups at one tab (`leaveGroups` in `state/groups/groups.ts`). Only drops add the Empty Folder row.
 - Shared folders are per profile: the binding is the profile's, so each profile has its own.

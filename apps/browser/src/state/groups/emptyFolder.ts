@@ -30,7 +30,7 @@ export const outsideKeptFolders = (s: BrowserState, ids: string[]) =>
 
 export function keptFolderOf(s: Pick<BrowserState, "groups">, id: string): string | undefined {
   const inner = innermostGroupOf(s.groups, id);
-  return inner?.pinned && [inner.id, ...ancestorIds(s.groups, inner.id)].some(groupKeptOpen) ? inner.id : undefined;
+  return inner?.pinned && [inner.id, ...ancestorIds(s.groups, inner.id)].some((group) => groupKeptOpen(group, s)) ? inner.id : undefined;
 }
 
 export function apartAtKeptFolderEdge(s: BrowserState, anchorId: string, members: string[], joining: string[], paired: string[]): [BrowserState, string[]] {
