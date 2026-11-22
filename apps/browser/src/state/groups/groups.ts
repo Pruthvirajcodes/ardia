@@ -211,7 +211,7 @@ export const createGroupsSlice: StateCreator<BrowserState, [], [], GroupsSlice> 
         const kept = g.tabIds.filter((x) => !out.has(x));
         if (kept.length) {
           const order = w.tabIds.filter((x) => !out.has(x));
-          order.splice(order.indexOf(kept.at(-1)!) + 1, 0, ...w.tabIds.filter((x) => out.has(x)));
+          insertAll(order, order.indexOf(kept.at(-1)!) + 1, w.tabIds.filter((x) => out.has(x)));
           windows[w.id] = { ...w, tabIds: order };
           groups = { ...groups, [g.id]: { ...g, tabIds: kept } };
         } else {

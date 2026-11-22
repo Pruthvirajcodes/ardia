@@ -154,8 +154,7 @@ export const noteBackCloseToOpener = () => void counts.backClosesToOpener++;
 
 export const noteWindowCloseTabsKept = (n: number) => void (counts.windowCloseTabsKept += n);
 
-export const noteSelectionClosedByKey = (tabs: number) => void ((counts.selectionCloseKeys += 1), (counts.selectionCloseKeyTabs += tabs));
-export const noteSelectionRemovedFromGroups = (tabs: number, consent?: ConsentToken | null) => bump(consent, { selectionGroupRemovals: 1, selectionGroupRemovalTabs: tabs });
+export const noteSelectionClosedByKey = (tabs: number) => void ((counts.selectionCloseKeys += 1), (counts.selectionCloseKeyTabs += tabs)), noteSelectionRemovedFromGroups = (tabs: number, consent?: ConsentToken | null) => bump(consent, { selectionGroupRemovals: 1, selectionGroupRemovalTabs: tabs });
 
 export const noteSharePicked = (kind: "tab" | "window" | "screen", withController = false, consent?: ConsentToken | null) =>
   bump(consentOrNow(consent), { [kind === "tab" ? "sharesPickedTab" : kind === "window" ? "sharesPickedWindow" : "sharesPickedScreen"]: 1, sharesWithCaptureController: withController ? 1 : 0 });

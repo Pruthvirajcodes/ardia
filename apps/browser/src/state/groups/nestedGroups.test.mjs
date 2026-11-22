@@ -108,6 +108,16 @@ test("Remove from Group across nested groups takes each tab up one level, in ord
   assert.deepEqual(order(again.w), ["c", "b", "d", "a", "e"]);
 });
 
+test("Remove from Group takes a split row out whole, in order with the other selected tab", () => {
+  reset();
+  const { w, ids: [a, b, c, d] } = windowWith("a", "b", "c", "d");
+  S().createSplit([b, c]);
+  const g = S().groupTabs([a, b, c, d], { pinned: false, name: "Reading" });
+  S().removeTabsFromGroup([c, a]);
+  assert.deepEqual(S().groups[g].tabIds, [d]);
+  assert.deepEqual(order(w), ["d", "a", "b", "c"]);
+});
+
 test("ungrouping a root makes its nested groups roots", () => {
   reset();
   const { w, outer, inner } = nested();
