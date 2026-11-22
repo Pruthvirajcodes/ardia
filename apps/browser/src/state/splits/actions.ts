@@ -9,6 +9,7 @@ import { splitLane, type SplitLane, splitsOnRow } from "./lanes";
 import type { AdoptId } from "../browser/types";
 import { noteSplit } from "../telemetry/usage";
 import { returnFocusToPage } from "../sidebar/actions";
+import { withoutEmptyFolderRows } from "../groups/emptyFolder";
 
 const store = () => useBrowser.getState();
 
@@ -71,7 +72,7 @@ export function dropTabOnRow(tabId: string, rowTabId: string, side: "left" | "ri
   const s = store();
   const tab = s.tabs[tabId];
   const row = s.tabs[rowTabId];
-  if (!tab || !row || !splitsOnRow(s, tabId, rowTabId)) return null;
+  if (!tab || !row || !splitsOnRow(s, tabId, rowTabId) || !withoutEmptyFolderRows(s, [tabId]).length) return null;
   const split = splitOf(s, rowTabId);
   const panes = splitTabIdsOf(split);
   if (panes?.includes(tabId)) return null;

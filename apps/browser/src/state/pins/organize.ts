@@ -10,6 +10,8 @@ import { pinnedGroupMembers } from "../browser/structure";
 import { samePage } from "../../lib/url";
 import { pinHome } from "./pinHomes";
 import { dropOnceAllowed, keptFolderLeavingPinned } from "../groups/keptFolderDrops";
+import { withoutEmptyFolderRows } from "../groups/emptyFolder";
+import { foreignWriteHooks } from "../browser/foreignWriteHooks";
 
 export type OrganizeSlice = {
   selection: Record<string, string[]>;
@@ -121,15 +123,23 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     set((s) => placing(s, ids, placement));
   },
 
-  dropTabs(ids, drop) {
+  dropTabs(dragged, drop) {
     const s = get();
-    const next = dropping(s, ids, drop);
-    if (next === s) return false;
-    const leaving = keptFolderLeavingPinned(s, next, drop);
+    const ids = drop.type === "group" ? dragged : withoutEmptyFolderRows(s, dragged);
+    if (dragged.length && !ids.length) return false;
+    const leaving = keptFolderLeavingPinned(s, drop);
     if (leaving) {
-      void dropOnceAllowed(s.groups[leaving]!.windowId, leaving, () => set((now) => dropping(now, ids, drop)));
+      const move = () => {
+        const now = get();
+        if (keptFolderLeavingPinned(now, drop) !== leaving) return false;
+        foreignWriteHooks.around(() => set(dropping(now, ids, drop)));
+        return true;
+      };
+      void dropOnceAllowed(s.groups[leaving]!.windowId, leaving, move);
       return false;
     }
+    const next = dropping(s, ids, drop);
+    if (next === s) return false;
     set(next);
     return true;
   },

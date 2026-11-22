@@ -12,6 +12,9 @@ const { dropTabsOutside } = await import("../drag/windowDrop.ts");
 const { bindFolder } = await import("./store.ts");
 const { confirmRemovingShared, sharedFolderOfGroup } = await import("./removal.ts");
 const { folderPlace } = await import("./engine.ts");
+const { foreignWriteHooks } = await import("../browser/foreignWriteHooks.ts");
+const { devTabPresses } = await import("../telemetry/tabPresses.ts");
+const { setConsentPeriod } = await import("../telemetry/consentPeriod.ts");
 
 const S = () => useBrowser.getState();
 guardGroupClose(confirmRemovingShared);
@@ -175,4 +178,81 @@ test("emptying two shared folders at once keeps their order", () => {
   S().dropTabs([a.ids[0], link], resolveDrop(S(), { kind: "tab" }, { zone: "list", beforeId: null }));
   assert.equal(rank(a.team) < rank(b), first);
   staysShared(a);
+});
+
+test("the Empty Folder row never lands inside the folder above", () => {
+  const f = sidebar();
+  const above = S().groupTabs([f.other], { pinned: true, name: "Above" });
+  S().moveGroup(above, { pinned: true, beforeId: f.ids[0] });
+  dropTab(f.ids[0], { zone: "group", groupId: above, beforeId: null });
+  const order = S().windows[f.w].tabIds;
+  const at = S().groups[above].tabIds.map((id) => order.indexOf(id));
+  assert.equal(Math.max(...at) - Math.min(...at) + 1, at.length, "the folder above stays in one piece");
+  staysShared(f);
+});
+
+for (const [where, drop] of [
+  ["the tab list", (f, row) => dropTab(row, { zone: "list", beforeId: null })],
+  ["a split", (f, row) => dropTabOnRow(row, f.home, "right")],
+  ["another profile", (f, row) => S().dropTabsInProfile([row], S().createProfile({ name: "Elsewhere" }), { type: "none" })],
+]) {
+  test(`the Empty Folder row itself can't be dragged into ${where}`, () => {
+    const f = sidebar();
+    dropTab(f.ids[0], { zone: "list", beforeId: null });
+    const row = S().groups[f.team].tabIds[0];
+    drop(f, row);
+    assert.deepEqual(S().groups[f.team].tabIds, [row]);
+    assert.equal(S().tabs[row].profileId, f.profileId);
+  });
+}
+
+test("dropping a window's last tab, a shared folder's only link, on another profile's window takes the folder along", () => {
+  const f = sidebar();
+  S().closeTabs([f.home, f.other]);
+  const target = S().createWindow({ profileId: S().createProfile({ name: "Away" }), url: "https://away.example/" });
+  S().moveTabsToWindow([f.ids[0]], target);
+  staysShared(f);
+  const kept = S().groups[f.team];
+  assert.equal(kept.windowId, target);
+  assert.deepEqual(kept.tabIds, [f.ids[0]], "the link stays in it, so its file stays too");
+});
+
+test("a folder unpinned while the question is up isn't pinned again by the answer", async (t) => {
+  const f = sidebar();
+  const outer = S().groupTabs([f.other], { pinned: true, name: "Outer" });
+  const real = shellNativeModules.ArdiaDialogs.confirm;
+  shellNativeModules.ArdiaDialogs.confirm = async () => (S().moveGroup(f.team, { pinned: false }), { confirmed: true, suppressed: false });
+  t.after(() => (shellNativeModules.ArdiaDialogs.confirm = real));
+  dropGroup(f.team, { zone: "group", groupId: outer, beforeId: null });
+  await settle();
+  assert.equal(S().groups[f.team].parentId, undefined);
+  assert.equal(S().groups[f.team].pinned, false);
+});
+
+test("an answer that can't move the folder any more isn't counted as a confirmed removal", async (t) => {
+  setConsentPeriod(true, "drop-test");
+  t.after(() => setConsentPeriod(false, null));
+  const f = sidebar();
+  const outer = S().groupTabs([f.other], { pinned: true, name: "Outer" });
+  const real = shellNativeModules.ArdiaDialogs.confirm;
+  shellNativeModules.ArdiaDialogs.confirm = async () => (S().ungroup(outer), { confirmed: true, suppressed: false });
+  t.after(() => (shellNativeModules.ArdiaDialogs.confirm = real));
+  const counted = devTabPresses().drops_shared_folder_confirmed;
+  dropGroup(f.team, { zone: "group", groupId: outer, beforeId: null });
+  await settle();
+  staysShared(f);
+  assert.equal(devTabPresses().drops_shared_folder_confirmed, counted);
+});
+
+test("the confirmed move is the user's own write, not a running automation command's", async (t) => {
+  answering(t, true);
+  const around = foreignWriteHooks.around;
+  let writes = 0;
+  foreignWriteHooks.around = (write) => (writes++, around(write));
+  t.after(() => (foreignWriteHooks.around = around));
+  const f = sidebar();
+  dropGroup(f.team, { zone: "list", beforeId: null });
+  await settle();
+  assert.equal(S().groups[f.team].pinned, false);
+  assert.equal(writes, 1);
 });

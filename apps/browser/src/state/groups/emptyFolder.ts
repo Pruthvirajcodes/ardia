@@ -1,9 +1,10 @@
 import type { BrowserState } from "../browser/store";
 import type { Tab, TabGroup } from "../browser/types";
-import { findLast, makeTab } from "../browser/model";
-import { ASLEEP } from "../tabs/pageSession";
+import { findLast, makeTab, pinKeyOf } from "../browser/model";
+import { ASLEEP, hasPage } from "../tabs/pageSession";
+import { isRegularWindow } from "../windows/small";
 import { groupKeptOpen } from "./closeGuard";
-import { orderSections, syncGroupOrder } from "./groups";
+import { ancestorIds, orderSections, placeGroups, syncGroupOrder } from "./groups";
 
 export const EMPTY_FOLDER_URL = "about:blank";
 const EMPTY_FOLDER_TITLE = "Empty Folder";
@@ -12,6 +13,14 @@ export const emptyFolderRow = (windowId: string, profileId: string): Tab => ({
   ...makeTab(windowId, profileId, EMPTY_FOLDER_URL, { title: EMPTY_FOLDER_TITLE, customTitle: EMPTY_FOLDER_TITLE }),
   page: ASLEEP,
 });
+
+export const isEmptyFolderRow = (t: Tab | undefined) => !!t && !hasPage(t) && (!t.url || t.url === EMPTY_FOLDER_URL);
+
+export function withoutEmptyFolderRows(s: BrowserState, ids: string[]): string[] {
+  const holdsFolder = (id: string) =>
+    isEmptyFolderRow(s.tabs[id]) && Object.values(s.groups).some((g) => g.tabIds.length === 1 && g.tabIds[0] === id && groupKeptOpen(g.id));
+  return ids.some(holdsFolder) ? ids.filter((id) => !holdsFolder(id)) : ids;
+}
 
 export function withEmptiedFoldersKept(before: BrowserState, after: BrowserState, left: ReadonlySet<string>): BrowserState {
   const dissolved = Object.values(before.groups).filter((g) => !after.groups[g.id] && after.windows[g.windowId] && g.tabIds.some((id) => left.has(id)) && groupKeptOpen(g.id));
@@ -31,9 +40,28 @@ export function withEmptiedFoldersKept(before: BrowserState, after: BrowserState
       tabs[row.id] = row;
       members = [row.id];
     }
-    const groups = { ...next.groups, [g.id]: { ...g, tabIds: members } };
-    const window = { ...w, tabIds: orderSections(tabIds, tabs, groups) };
+    const { autoUngroup: _, ...kept } = g;
+    const groups = { ...next.groups, [g.id]: { ...kept, tabIds: members } };
+    const window = { ...w, tabIds: orderSections(placeGroups(tabIds, groups, w.id), tabs, groups) };
     next = { ...next, tabs, groups: syncGroupOrder(groups, window), windows: { ...next.windows, [w.id]: window } };
   }
   return next;
+}
+
+export function withKeptFoldersMovedAlong(before: BrowserState, after: BrowserState, targetId: string): BrowserState {
+  const target = after.windows[targetId];
+  if (!isRegularWindow(target)) return after;
+  const shown = (g: TabGroup) =>
+    Object.values(after.groups).some((x) => x.pinned && !x.parentId && x.profileId === g.profileId && pinKeyOf(x) === pinKeyOf(g));
+  const following = Object.values(before.groups).filter(
+    (g) => !after.windows[g.windowId] && groupKeptOpen(g.id) && g.tabIds.every((id) => after.tabs[id]?.windowId === targetId) && !shown(g),
+  );
+  if (!following.length) return after;
+  const roots = new Set(following.map((g) => g.id));
+  const groups = { ...after.groups };
+  for (const g of Object.values(before.groups)) {
+    if (roots.has(g.id) || ancestorIds(before.groups, g.id).some((id) => roots.has(id))) groups[g.id] = { ...g, windowId: targetId };
+  }
+  const window = { ...target!, tabIds: orderSections(placeGroups(target!.tabIds, groups, targetId), after.tabs, groups) };
+  return { ...after, groups: syncGroupOrder(groups, window), windows: { ...after.windows, [targetId]: window } };
 }

@@ -1,7 +1,7 @@
 import type { BrowserState } from "../browser/store";
 import type { Tab, TabGroup } from "../browser/types";
 import { activeTabId, makeTab, newId } from "../browser/model";
-import { EMPTY_FOLDER_URL, emptyFolderRow } from "../groups/emptyFolder";
+import { emptyFolderRow, isEmptyFolderRow } from "../groups/emptyFolder";
 import { nestGroups, orderSections, syncGroupOrder } from "../groups/groups";
 import { markPinned } from "../pins/pinChoices";
 import { removeTabs } from "../tabs/tabs";
@@ -20,8 +20,6 @@ function keysIn(level: TargetLevel, links: Set<string>, dirs: Set<string>) {
 
 const hasLink = (level: TargetLevel): boolean => level.entries.some((e) => e.kind === "link" || hasLink(e.level));
 
-const isPlaceholder = (t: Tab | undefined) => !!t && !hasPage(t) && (!t.url || t.url === EMPTY_FOLDER_URL);
-
 const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 export function withFolder(s: BrowserState, groupId: string, level: TargetLevel, folder: LocalFolder): BrowserState {
@@ -34,7 +32,7 @@ export function withFolder(s: BrowserState, groupId: string, level: TargetLevel,
   keysIn(level, links, dirs);
   const shown = activeTabId(s, windowId);
   const goneLinks = [...folder.tabOf].filter(([key]) => !links.has(key)).map(([, id]) => id);
-  const blanks = hasLink(level) ? (folder.others.get(groupId) ?? []).filter((id) => isPlaceholder(s.tabs[id]) && id !== shown) : [];
+  const blanks = hasLink(level) ? (folder.others.get(groupId) ?? []).filter((id) => isEmptyFolderRow(s.tabs[id]) && id !== shown) : [];
   const released = goneLinks.filter((id) => hasPage(s.tabs[id]!) || id === shown);
   const removed = [...goneLinks.filter((id) => !released.includes(id)), ...blanks];
   let dirty = goneLinks.length + blanks.length > 0;

@@ -29,7 +29,8 @@ Arc had shared folders; Dia has none, so this is an Ardia extra (`docs/dia-featu
   says the directory stays with every link and with the people it's shared with. It only unbinds; Ardia never
   deletes the directory.
 - Dragging a shared folder's last link out doesn't remove the folder: it keeps an "Empty Folder" row and stays shared,
-  and the link's file leaves the directory as any link dragged out does (`state/groups/emptyFolder.ts`).
+  and the link's file leaves the directory as any link dragged out does (`state/groups/emptyFolder.ts`). The row
+  itself can't be dragged out. A window's last tab dropped on another window takes its folder along, link and all.
 - Shared folders are per profile: the binding is the profile's, so each profile has its own.
 
 ## Files
