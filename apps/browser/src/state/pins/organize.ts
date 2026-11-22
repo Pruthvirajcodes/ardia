@@ -9,6 +9,7 @@ import { placing, type TabPlacement } from "./placing";
 import { pinnedGroupMembers } from "../browser/structure";
 import { samePage } from "../../lib/url";
 import { pinHome } from "./pinHomes";
+import { dropOnceAllowed, keptFolderLeavingPinned } from "../groups/keptFolderDrops";
 
 export type OrganizeSlice = {
   selection: Record<string, string[]>;
@@ -124,6 +125,11 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     const s = get();
     const next = dropping(s, ids, drop);
     if (next === s) return false;
+    const leaving = keptFolderLeavingPinned(s, next, drop);
+    if (leaving) {
+      void dropOnceAllowed(s.groups[leaving]!.windowId, leaving, () => set((now) => dropping(now, ids, drop)));
+      return false;
+    }
     set(next);
     return true;
   },

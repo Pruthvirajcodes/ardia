@@ -8,6 +8,7 @@ import { crossesLane } from "./lanes";
 import { choose } from "../settings/settings";
 import { activated, apply, removeTabs, withNewTab } from "../tabs/tabs";
 import type { AdoptId, BrowserWindow, SplitSlot, SplitView, Tab } from "../browser/types";
+import { withEmptiedFoldersKept } from "../groups/emptyFolder";
 
 export type SplitsSlice = {
   splits: Record<string, SplitView>;
@@ -185,7 +186,7 @@ function gatherLane(s: BrowserState, anchorId: string, members: string[]): Brows
   let groups = leaveGroups(s.groups, moving);
   const group = innermostGroupOf(s.groups, anchorId);
   if (group && groups[group.id]) groups = { ...groups, [group.id]: { ...groups[group.id]!, tabIds: [...groups[group.id]!.tabIds, ...moving] } };
-  return { ...s, windows: { ...s.windows, [w.id]: window }, groups: syncGroupOrder(groups, window) };
+  return withEmptiedFoldersKept(s, { ...s, windows: { ...s.windows, [w.id]: window }, groups: syncGroupOrder(groups, window) }, moving);
 }
 
 function besideAnchor(s: BrowserState, anchorId: string, ids: string[]): BrowserState {

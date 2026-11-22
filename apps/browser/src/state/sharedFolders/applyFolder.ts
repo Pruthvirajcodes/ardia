@@ -1,6 +1,7 @@
 import type { BrowserState } from "../browser/store";
 import type { Tab, TabGroup } from "../browser/types";
 import { activeTabId, makeTab, newId } from "../browser/model";
+import { EMPTY_FOLDER_URL, emptyFolderRow } from "../groups/emptyFolder";
 import { nestGroups, orderSections, syncGroupOrder } from "../groups/groups";
 import { markPinned } from "../pins/pinChoices";
 import { removeTabs } from "../tabs/tabs";
@@ -18,9 +19,6 @@ function keysIn(level: TargetLevel, links: Set<string>, dirs: Set<string>) {
 }
 
 const hasLink = (level: TargetLevel): boolean => level.entries.some((e) => e.kind === "link" || hasLink(e.level));
-
-export const EMPTY_FOLDER_URL = "about:blank";
-const EMPTY_FOLDER_TITLE = "Empty Folder";
 
 const isPlaceholder = (t: Tab | undefined) => !!t && !hasPage(t) && (!t.url || t.url === EMPTY_FOLDER_URL);
 
@@ -101,7 +99,7 @@ export function withFolder(s: BrowserState, groupId: string, level: TargetLevel,
   const leftover = root.tabIds.filter((id) => tabs[id] && !inPlace.has(id) && !released.includes(id) && !removed.includes(id));
   let members = [...placed, ...leftover];
   if (!members.length) {
-    const blank: Tab = { ...makeTab(windowId, profileId, EMPTY_FOLDER_URL, { title: EMPTY_FOLDER_TITLE, customTitle: EMPTY_FOLDER_TITLE }), page: ASLEEP };
+    const blank = emptyFolderRow(windowId, profileId);
     tabs[blank.id] = blank;
     members = [blank.id];
     dirty = true;

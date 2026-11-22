@@ -25,9 +25,11 @@ Arc had shared folders; Dia has none, so this is an Ardia extra (`docs/dia-featu
   while links wait for iCloud to download, and `exclamationmark.icloud` in `destructive` when the directory is
   missing or a write failed (`components/sidebar/SharedFolderMark.tsx`).
 - Removing a shared folder from the sidebar (Delete, Close from the menu, ⌃⌘W or the close control, Ungroup, Unpin,
-  Move to Bookmarks Bar, Move to Profile) asks first, and
+  Move to Bookmarks Bar, Move to Profile, dragging it out of Pinned or into another folder) asks first, and
   says the directory stays with every link and with the people it's shared with. It only unbinds; Ardia never
   deletes the directory.
+- Dragging a shared folder's last link out doesn't remove the folder: it keeps an "Empty Folder" row and stays shared,
+  and the link's file leaves the directory as any link dragged out does (`state/groups/emptyFolder.ts`).
 - Shared folders are per profile: the binding is the profile's, so each profile has its own.
 
 ## Files
