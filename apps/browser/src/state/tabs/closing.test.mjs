@@ -11,6 +11,7 @@ const { isSleeping, useLifecycle } = await import("./sleepingTabs.ts");
 const { takeTabSleepCounts } = await import("../telemetry/tabSleepCounts.ts");
 const { setConsentPeriod } = await import("../telemetry/consentPeriod.ts");
 const { successorWhenLeaving } = await import("../windows/card.ts");
+const { sleepsNow } = await import("./openers.ts");
 await import("../../test-native/index.ts");
 
 const S = () => useBrowser.getState();
@@ -39,8 +40,8 @@ test("closing a Peek through either call ends the Peek and records nothing", () 
 function visitedInOrder(t, ...hosts) {
   t.mock.timers.enable({ apis: ["Date"], now: 1_700_000_000_000 });
   setConsentPeriod(true, "closing-test");
-  t.after(() => setConsentPeriod(false, null));
   useLifecycle.setState({ discarded: {} });
+  t.after(() => (setConsentPeriod(false, null), useLifecycle.setState({ discarded: {} })));
   const { w, ids } = windowWith(hosts[0]);
   for (const h of hosts.slice(1)) {
     t.mock.timers.tick(100);
@@ -51,44 +52,63 @@ function visitedInOrder(t, ...hosts) {
   return { w, ids };
 }
 
-test("⌘W on the front tab switches to an awake tab and leaves a tab put to sleep from its menu asleep", (t) => {
+test("⌘W on the front tab switches to an awake tab and leaves a tab put to sleep from its menu asleep", async (t) => {
   const { w, ids: [a, b, c] } = visitedInOrder(t, "a", "b", "c");
   noteDiscarded(b, "external");
-  S().closeTab(c);
+  await closeTab(c);
   assert.equal(activeTabId(S(), w), a);
   assert.equal(isSleeping(b), true);
   assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 0);
 });
 
-test("⌘W on a pinned tab in front switches to an awake regular tab, not one put to sleep", (t) => {
+test("⌘W on a pinned tab in front switches to an awake regular tab, not one put to sleep", async (t) => {
   const { w, ids: [a, b, p] } = visitedInOrder(t, "a", "b", "p");
   S().pinTabs([p], true);
   S().activate(p);
   noteDiscarded(b, "external");
-  S().closeTab(p);
+  await closeTab(p);
   assert.equal(activeTabId(S(), w), a);
   assert.equal(isSleeping(b), true);
   assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 0);
   noteDiscarded(a, "proactive");
   S().activate(p);
   takeTabSleepCounts();
-  S().closeTab(p);
+  await closeTab(p);
   assert.equal(activeTabId(S(), w), a, "with every regular tab asleep it still picks the one used last");
   assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 1);
 });
 
-test("⌘W on a pinned row with only pinned rows left switches to an awake one, not one put to sleep", (t) => {
+test("⌘W on a pinned row with only pinned rows left switches to an awake one, not one put to sleep", async (t) => {
   const { w, ids: [a, b, c] } = visitedInOrder(t, "a", "b", "c");
   S().pinTabs([a, b, c], true, true);
   S().activate(c);
   noteDiscarded(b, "external");
-  S().closeTab(c);
+  await closeTab(c);
   assert.equal(activeTabId(S(), w), a);
   assert.equal(isSleeping(b), true);
   assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 0);
 });
 
-test("⌘W with only sleeping tabs left still switches to the one used last, and counts the wake while sharing is on", (t) => {
+test("closing the group in front shows the awake tab above it, not one put to sleep", async (t) => {
+  const { w, ids: [a, b, c, d] } = visitedInOrder(t, "a", "b", "c", "d");
+  const g = S().groupTabs([c, d], { pinned: false });
+  S().activate(c);
+  noteDiscarded(b, "external");
+  S().closeGroup(g);
+  assert.equal(activeTabId(S(), w), a);
+  assert.equal(isSleeping(b), true);
+});
+
+test("a tab showing another window's page sleeps when that page was put to sleep", (t) => {
+  useLifecycle.setState({ discarded: {} });
+  t.after(() => useLifecycle.setState({ discarded: {} }));
+  const s = { tabs: { holder: { page: { kind: "loaded" } }, copy: { page: { kind: "frozen", holderId: "holder" } } } };
+  assert.equal(sleepsNow(s, "copy"), false);
+  useLifecycle.setState({ discarded: { holder: true } });
+  assert.equal(sleepsNow(s, "copy"), true);
+});
+
+test("⌘W with only sleeping tabs left still switches to the one used last, and counts the wake while sharing is on", async (t) => {
   for (const sharing of [true, false]) {
     const { w, ids: [a, b, c] } = visitedInOrder(t, "a", "b", "c");
     setConsentPeriod(sharing, "closing-test");
@@ -96,7 +116,7 @@ test("⌘W with only sleeping tabs left still switches to the one used last, and
     noteDiscarded(b, "external");
     assert.equal(successorWhenLeaving([c], w), b, "a drag's preview of the close");
     assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 0, "a preview isn't a close");
-    S().closeTab(c);
+    await closeTab(c);
     assert.equal(activeTabId(S(), w), b);
     assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, sharing ? 1 : 0);
     t.mock.timers.reset();

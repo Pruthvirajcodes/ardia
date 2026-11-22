@@ -4,12 +4,14 @@ import { inPinnedContainer } from "../browser/model";
 import { groupOf, pinnedChildGroup } from "../pins/tabGrouping";
 import { splitOf, splitTabIds, splitTabIdsOf } from "../splits/splits";
 import type { BrowserWindow, Tab } from "../browser/types";
-import { isAsleep } from "./pageSession";
+import { holderOfPage, isAsleep } from "./pageSession";
 import { isSleeping } from "./sleepingTabs";
 
 const regular = (s: BrowserState, id: string) => !inPinnedContainer(s, id);
 
-export const sleepsNow = (s: BrowserState, id: string) => isAsleep(s.tabs[id]) || isSleeping(id);
+export const discardedNow = (s: BrowserState, id: string) => isSleeping(holderOfPage(s.tabs[id]) ?? id);
+
+export const sleepsNow = (s: BrowserState, id: string) => isAsleep(s.tabs[id]) || discardedNow(s, id);
 
 export function insertionIndex(s: BrowserState, w: BrowserWindow, tab: Tab, background: boolean): number {
   const opener = tab.openerId ? s.tabs[tab.openerId] : undefined;

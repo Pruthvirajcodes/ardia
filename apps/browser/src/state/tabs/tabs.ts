@@ -3,7 +3,6 @@ import { leaveGroups } from "../groups/groups";
 import { withShownTab } from "../groups/shownTabs";
 import { byRecentUse, inPinnedContainer, makeTab, navigationTo, newId, TILE_PIN, viewTabIds, without } from "../browser/model";
 import { closeSuccessor, forgetOpeners, insertionIndex, sleepsNow } from "./openers";
-import { isSleeping } from "./sleepingTabs";
 import { onUrlChange, pruneSelection } from "../pins/organize";
 import { isClosedPin } from "../pins/tabCleanup";
 import { adoptedPage, ASLEEP, frozenOn, hasOwnOrSharedPage, hasPage, isAsleep, isLazy, loadedPage, needsPage, withWake, wokenPage } from "./pageSession";
@@ -19,7 +18,7 @@ import { orderSections } from "../groups/groups";
 import { samePage } from "../../lib/url";
 import { historyOf } from "../history/history";
 import { pinHome } from "../pins/pinHomes";
-import { noteCloseWokeSleepingTab, noteTopAppsKeptRunning } from "../telemetry/tabSleepCounts";
+import { noteTopAppsKeptRunning } from "../telemetry/tabSleepCounts";
 
 export type NewTabOptions = {
   url?: string;
@@ -159,7 +158,6 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
       const before = w.tabIds.filter((id) => s.tabs[id]?.profileId === profileId);
       const left = withoutTopApps(s, before.filter((id) => !gone.has(id)));
       const next = otherPane(s, activeId, gone) ?? closeSuccessor(s, activeId, before, left);
-      if (record && next && profileId === w.profileId && isSleeping(next)) noteCloseWokeSleepingTab();
       if (next) activeTabIds[profileId] = next;
       else delete activeTabIds[profileId];
     }
@@ -244,7 +242,6 @@ export function unloadPinnedTabs(s: BrowserState, requested: string[], keepTopAp
       const shown = profileId === w.profileId;
       if (shown && leaving.has(activeId) && runningInFront(activeId)) noteTopAppsKeptRunning(1);
       let replacement = lastRegularTab(s, w, activeId, closing) ?? lastLivePinnedTab(s, w, activeId, closing, keepTopApps);
-      if (shown && replacement && isSleeping(replacement)) noteCloseWokeSleepingTab();
       if (!replacement) [next, replacement] = withNewTab(next, w.id, { profileId, background: !shown });
       if (shown) next = apply(next, activated(next, replacement));
       else {
@@ -278,7 +275,7 @@ function lastLivePinnedTab(s: BrowserState, w: BrowserWindow, id: string, closin
     const tab = s.tabs[t];
     return !closing.has(t) && tab?.profileId === profileId && inPinnedContainer(s, t) && hasPage(tab) && !(skipTopApps && keptWithTopApp(s, t));
   });
-  const awake = live.filter((t) => !isSleeping(t));
+  const awake = live.filter((t) => !sleepsNow(s, t));
   return (awake.length ? awake : live).reduce<string | undefined>((best, t) => (!best || byRecentUse(s.tabs[t]!, s.tabs[best]!) < 0 ? t : best), undefined);
 }
 
