@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet } from "react-native";
-import { ARRIVAL_COVER_ID, OPENING_COVER_ID, pageCoverHidden, pageDrawn, pageStateChanged, pageToneChanged, swipedPastHistory } from "../../state/browse/store";
+import { ARRIVAL_COVER_ID, OPENING_COVER_ID, pageCoverHidden, pageDrawn, pageOpenFailed, pageStateChanged, pageToneChanged, swipedPastHistory } from "../../state/browse/store";
 import { useNavigation, usePageArriving, usePageCovered, usePageTone, usePageVeiled } from "../../state/browse/hooks";
 import { shownTone } from "../../lib/pageTone";
 import { registerPageHandle } from "../../state/pages/store";
@@ -11,7 +11,7 @@ import { usePreferences } from "../../state/settings/hooks";
 import { pageSwipe } from "../../state/settings/settingsRules";
 import { PageView, useTheme, type PageViewHandle } from "../ui";
 
-export function PageSurface({ tab, toneBottom, obscured, bottomInsetTransitionMs, summaryBottomInset, topClearance, pinsSafeArea, testID }: { tab: BrowserTab; toneBottom: number; obscured?: { top: number; bottom: number }; bottomInsetTransitionMs?: number; summaryBottomInset?: number; topClearance?: number; pinsSafeArea?: boolean; testID?: string }) {
+export function PageSurface({ tab, toneBottom, obscured, summaryBottomInset, topClearance, pinsSafeArea, testID }: { tab: BrowserTab; toneBottom: number; obscured?: { top: number; bottom: number }; summaryBottomInset?: number; topClearance?: number; pinsSafeArea?: boolean; testID?: string }) {
   const handle = useRef<PageViewHandle>(null);
   const theme = useTheme();
   const id = tab.id;
@@ -41,7 +41,6 @@ export function PageSurface({ tab, toneBottom, obscured, bottomInsetTransitionMs
       savedState={setup.saved}
       toneInsets={{ top: 0, bottom: toneBottom }}
       obscuredInsets={obscured}
-      bottomInsetTransitionMs={bottomInsetTransitionMs}
       summaryBottomInset={summaryBottomInset}
       obscuredColors={obscuredColors}
       topClearance={topClearance}
@@ -55,6 +54,7 @@ export function PageSurface({ tab, toneBottom, obscured, bottomInsetTransitionMs
       onPageState={(state) => pageStateChanged(id, state)}
       onPageTone={(tone) => pageToneChanged(id, tone)}
       onPageDrawn={() => pageDrawn(id)}
+      onPageError={(error) => pageOpenFailed(id, error.code)}
       coverNativeId={covered ? (arriving ? ARRIVAL_COVER_ID : OPENING_COVER_ID) : undefined}
       onPageCoverHidden={(reason) => pageCoverHidden(id, reason)}
     />

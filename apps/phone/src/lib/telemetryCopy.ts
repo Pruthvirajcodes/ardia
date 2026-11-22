@@ -67,15 +67,19 @@ export const PHONE_WHATS_SENT: { title: string; items: SentItem[] }[] = [
       },
       {
         text: "In the same daily counts, on iPhone: how many Browse for Me answers Talk to Me read aloud and how many of those you started by holding the phone to your ear, how often its voice finished downloading or failed to, and how often it couldn’t speak. Counts only, never what it read",
-        fields: ["talk_to_me_answers_read", "talk_to_me_ear_listens", "talk_to_me_voice_downloads", "talk_to_me_download_failed", "talk_to_me_failed", "tray_incognito_switches"],
+        fields: ["talk_to_me_answers_read", "talk_to_me_ear_listens", "talk_to_me_voice_downloads", "talk_to_me_download_failed", "talk_to_me_failed"],
+      },
+      {
+        text: "In the same daily counts: how often you turned Incognito on with the eyes in the search panel, and on Android how often Ardia couldn’t turn Incognito on because the phone’s Android System WebView is too old to keep Incognito pages separate. Counts only, never what you browsed",
+        fields: ["tray_incognito_switches", "incognito_unavailable"],
       },
       {
         text: "In the same daily counts, on iPhone: how often you summarized a page by pinching in or from the page menu, how many summaries Apple Intelligence wrote on the phone or were the page’s own lines, and how many it couldn’t write. Counts only, never which page or what the summary said",
         fields: ["page_summaries_pinched", "page_summaries_from_menu", "page_summaries_on_device", "page_summaries_excerpts", "page_summaries_failed"],
       },
       {
-        text: "In the same daily counts, on Android: when a search answer or a page summary couldn’t use Gemini Nano, why: it was still downloading, Google doesn’t offer it to apps on this phone, it needed a Google AICore or system update, or it failed. Counts only, never what you searched for or which page",
-        fields: ["gemini_nano_downloading", "gemini_nano_not_offered", "gemini_nano_needs_update", "gemini_nano_errors"],
+        text: "In the same daily counts, on Android: when a search answer or a page summary couldn’t use Gemini Nano, why: it was still downloading, its download stopped, Google doesn’t offer it to apps on this phone, it needed a Google AICore or system update, it didn’t start, or it started but couldn’t write; and how often you rewrote a search answer with Gemini Nano once its download finished. Counts only, never what you searched for or which page",
+        fields: ["gemini_nano_downloading", "gemini_nano_not_offered", "gemini_nano_needs_update", "gemini_nano_errors", "gemini_nano_download_failed", "gemini_nano_write_failed", "gemini_nano_download_rewrites"],
       },
       {
         text: "In the same daily counts: how often you tapped Paste and Go with a link or with text, and how often it found nothing to paste because you didn’t allow the paste or the clipboard had emptied. Never what you copied, and never while browsing privately",
