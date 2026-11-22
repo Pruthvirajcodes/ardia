@@ -15,8 +15,8 @@ const HOME = { home: stamp(1_000), "place:home": stamp(2_000) };
 const WORK = { desk: stamp(3_000) };
 const profile = (id) => ({ id, name: id, color: "plum", icon: null, createdAt: 0 });
 const tab = (id, profileId) => ({ id, windowId: "w1", profileId, url: `https://${id}.example/`, title: id, favicon: null, pin: { as: "tile" }, muted: false, zoom: 1, customTitle: null, customIcon: null, pinnedUrl: null, page: { kind: "idle" }, openerId: null, createdAt: 0, lastActiveAt: 0 });
-const sessionWith = (pinChoices) => ({
-  version: SESSION_VERSION,
+const sessionWith = (pinChoices, version = SESSION_VERSION) => ({
+  version,
   profiles: { default: profile("default"), work: profile("work") },
   profileOrder: ["default", "work"],
   windows: [{ id: "w1", profileId: "default", tabIds: ["home", "desk"], activeTabIds: { default: "home", work: "desk" }, frame: null, createdAt: 0 }],
@@ -25,8 +25,8 @@ const sessionWith = (pinChoices) => ({
   pinChoices,
 });
 
-function launchWith(pinChoices, sharing = false) {
-  stub.docs.set(SESSION_DOCUMENT, JSON.stringify(sessionWith(pinChoices)));
+function launchWith(pinChoices, sharing = false, version = SESSION_VERSION) {
+  stub.docs.set(SESSION_DOCUMENT, JSON.stringify(sessionWith(pinChoices, version)));
   setConsentPeriod(sharing, sharing ? "epoch-pin-choices" : null);
   takeSessionWrites();
   const stop = startPersistence();
@@ -83,4 +83,17 @@ test("a launch that dropped malformed pin choices is counted once, and only whil
   assert.equal(repairs({ default: { home: 0 } }, false), 0);
   assert.equal(repairs({ default: HOME, work: WORK }, true), 0);
   assert.equal(repairs(undefined, true), 0, "a session without choices isn't damaged");
+});
+
+test("malformed pin choices the 8 to 9 migration drops are counted once too, and only while sharing", () => {
+  const repairs = (pinChoices, sharing, version) => launchWith(pinChoices, sharing, version).counts.session_pin_choice_repairs;
+  const dropped = [{ default: { bad: true } }, { default: { bad: true }, work: { bad: null } }, { default: null }, { default: [] }, null, [null]];
+  for (let version = 2; version <= SESSION_VERSION; version++) {
+    for (const bad of dropped) {
+      assert.equal(repairs(bad, true, version), 1, `version ${version}, ${JSON.stringify(bad)}`);
+      assert.equal(repairs(bad, false, version), 0, `version ${version}, not sharing`);
+    }
+    assert.equal(repairs({ default: HOME }, true, version), 0, `version ${version}, stamps`);
+    if (version <= 8) assert.equal(repairs({ default: { home: 1_000 } }, true, version), 0, `version ${version}, a time is converted, not dropped`);
+  }
 });

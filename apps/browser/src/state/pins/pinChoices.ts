@@ -38,11 +38,16 @@ export function stampedPinChoices(saved: unknown): PinChoices {
   return Object.fromEntries(byProfile);
 }
 
-export const sessionWithPinChoiceStamps = (doc: SavedObject): SavedObject =>
-  isFields(doc.pinChoices) ? { ...doc, pinChoices: stampedPinChoices(doc.pinChoices) } : doc;
+const everyChoice = (saved: SavedObject, ok: (choice: unknown) => boolean) =>
+  Object.values(saved).every((mine) => isFields(mine) && Object.values(mine).every(ok));
 
-export const isPinChoices = (saved: unknown): saved is PinChoices =>
-  isFields(saved) && Object.values(saved).every((mine) => isFields(mine) && Object.values(mine).every(isString));
+export function sessionWithPinChoiceStamps(doc: SavedObject): SavedObject {
+  if (!isFields(doc.pinChoices)) return doc;
+  if (!everyChoice(doc.pinChoices, (choice) => isString(choice) || typeof choice === "number")) notePinChoicesRepaired();
+  return { ...doc, pinChoices: stampedPinChoices(doc.pinChoices) };
+}
+
+export const isPinChoices = (saved: unknown): saved is PinChoices => isFields(saved) && everyChoice(saved, isString);
 
 export function pinChoicesFromDisk(saved: unknown = {}): PinChoices {
   if (isPinChoices(saved)) return saved;
