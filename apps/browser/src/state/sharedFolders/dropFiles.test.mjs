@@ -273,3 +273,67 @@ test("a pinned tab dropped on a split leaves the split's shared link in its fold
   await afterwards(f, files);
   assert.ok(S().groups[f.team].tabIds.includes(link));
 });
+
+for (const names of [["only"], ["alpha", "beta"]]) {
+  for (const [how, act] of [
+    ["in a list group's header into Pinned", (t) => {
+      const list = S().groupTabs([t.tab], { pinned: false, name: "List" });
+      S().dropTabs([], resolveDrop(S(), { kind: "group", groupId: list }, { zone: "pinnedRows", beforeId: t.team.tabIds[0] }));
+    }],
+    ["onto a row of a pinned folder above it", (t) => dropTabOnRow(t.tab, S().groups[t.other.id].tabIds[0], "right")],
+    ["onto a page of a pinned folder above it", (t) => dropTabIntoSplit(t.tab, S().groups[t.other.id].tabIds[0], "right")],
+    ["into a new pinned group", (t) => S().groupTabs([t.tab], { pinned: true, name: "New" })],
+  ]) {
+    test(`a torn-off copy of one of ${names.length} links taken ${how} changes no file and keeps the folder shared`, async () => {
+      const t = await tornOff(names);
+      S().moveGroup(t.other.id, { pinned: true, parentId: null, beforeId: S().groups[t.team.id].tabIds[0] });
+      await t.f.sync();
+      act(t);
+      await afterwards(t.f, t.f.before);
+    });
+  }
+}
+
+for (const [where, firstPinned, drop] of [
+  ["on a pinned row of its split", true, (f, first, tab) => dropTabOnRow(tab, first, "right")],
+  ["on the page of a pinned pane of its split", true, (f, first, tab) => dropTabIntoSplit(tab, first, "right")],
+  ["left of a listed pane of its split", false, (f, first, tab) => dropTabOnRow(tab, first, "left")],
+  ["right of a listed pane of its split", false, (f, first, tab) => dropTabOnRow(tab, first, "right")],
+]) {
+  test(`a listed tab dropped ${where} changes no file of the shared link beside it`, async () => {
+    const f = await shared(["only"]);
+    const first = S().newTab(f.w, { url: `https://first${runs}.example/`, background: true });
+    S().pinTabs([first], true, true);
+    openLinkInSplit(first, `https://split${runs}.example/`);
+    const link = Object.values(S().tabs).find((tab) => tab.url === `https://split${runs}.example/`).id;
+    dropTab([link], { zone: "group", groupId: f.team, beforeId: null });
+    if (!firstPinned) S().pinTabs([first], false);
+    await f.sync();
+    const files = f.files();
+    assert.equal(files.length, 2);
+    const tab = S().newTab(f.w, { url: `https://listed${runs}.example/`, background: true });
+    drop(f, first, tab);
+    await afterwards(f, files);
+    assert.ok(S().groups[f.team].tabIds.includes(link));
+  });
+}
+
+test("a link opened in a split from a shared folder's link still joins the folder", async () => {
+  const f = await shared(["only"]);
+  openLinkInSplit(f.id.only, `https://split${runs}.example/`);
+  await f.sync();
+  assert.equal(f.files().length, 2);
+});
+
+for (const blank of ["about:blank", ""]) {
+  test(`a real link showing ${blank || "an empty address"} can still be dragged out`, async () => {
+    const f = await shared(["only"]);
+    const home = S().tabs[f.id.only].url;
+    S().updateTab(f.id.only, { pinnedUrl: home, url: blank });
+    await f.sync();
+    dropTab([f.id.only], LIST);
+    await f.sync();
+    assert.equal(S().groups[f.team].tabIds.includes(f.id.only), false);
+    assert.equal(f.bound(), true, "still shared");
+  });
+}

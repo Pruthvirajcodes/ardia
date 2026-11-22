@@ -8,7 +8,7 @@ import { crossesLane } from "./lanes";
 import { choose } from "../settings/settings";
 import { activated, apply, removeTabs, withNewTab } from "../tabs/tabs";
 import type { AdoptId, BrowserWindow, SplitSlot, SplitView, Tab } from "../browser/types";
-import { outsideKeptFolders, withEmptiedFoldersKept } from "../groups/emptyFolder";
+import { apartAtKeptFolderEdge, withEmptiedFoldersKept } from "../groups/emptyFolder";
 
 export type SplitsSlice = {
   splits: Record<string, SplitView>;
@@ -162,7 +162,7 @@ export function sanitizeSplits(splits: Record<string, SplitView>, tabs: Record<s
 }
 
 function gatherPinned(s: BrowserState, anchorId: string, members: string[]): BrowserState {
-  const newcomers = outsideKeptFolders(s, members).filter((id) => id !== anchorId && s.tabs[id] && !isPinnedRow(s.tabs[id]));
+  const newcomers = members.filter((id) => id !== anchorId && s.tabs[id] && !isPinnedRow(s.tabs[id]));
   const settled = (splitTabIdsOf(splitOf(s, anchorId)) ?? []).filter((id) => !newcomers.includes(id) && isPinnedRow(s.tabs[id]));
   if (!newcomers.length || settled.length < 2) return s;
   const next = placing(s, newcomers, { pinned: true, row: true, beforeId: anchorId });
@@ -199,11 +199,13 @@ function besideAnchor(s: BrowserState, anchorId: string, ids: string[]): Browser
   return { ...s, windows: { ...s.windows, [w.id]: window }, groups: syncGroupOrder(s.groups, window) };
 }
 
-function gather(s: BrowserState, anchorId: string, members: string[], joining: string[] = members): BrowserState {
+function gather(s: BrowserState, anchorId: string, members: string[], joining: string[] = members, paired: string[] = []): BrowserState {
+  const [view, moving] = apartAtKeptFolderEdge(s, anchorId, members, joining, paired);
   const anchor = s.tabs[anchorId];
-  const crossing = anchor ? members.filter((id) => id !== anchorId && joining.includes(id) && s.tabs[id] && crossesLane(anchor, s.tabs[id]!)) : [];
-  const adopted = crossing.length ? placing(s, crossing, { pinned: isPinnedRow(anchor), row: true, beforeId: anchorId }) : s;
-  return besideAnchor(gatherLane(adopted, anchorId, members), anchorId, crossing);
+  const crossing = anchor ? moving.filter((id) => id !== anchorId && joining.includes(id) && s.tabs[id] && crossesLane(anchor, s.tabs[id]!)) : [];
+  const adopted = crossing.length ? placing(view, crossing, { pinned: isPinnedRow(anchor), row: true, beforeId: anchorId }) : view;
+  const gathered = besideAnchor(gatherLane(adopted, anchorId, moving), anchorId, crossing);
+  return view === s ? gathered : { ...gathered, splits: s.splits };
 }
 
 function placedAfterSplit(s: BrowserState, split: SplitView, tabId: string): BrowserState {
@@ -282,7 +284,7 @@ export const createSplitsSlice: StateCreator<BrowserState, [], [], SplitsSlice> 
     const current = existing && s.splits[existing.id];
     if (replaced && current) {
       const split = withPaneIds(current, splitTabIds(current).map((id) => (id === replaced ? tabId : id)));
-      s = gather(s, anchor.id, splitTabIds(split), joining);
+      s = gather(s, anchor.id, splitTabIds(split), joining, splitTabIdsOf(existing));
       s = placedAfterSplit({ ...s, splits: { ...s.splits, [split.id]: split } }, split, replaced);
       if (!o.background) s = apply(s, activated(s, tabId));
       set(s);
@@ -290,7 +292,7 @@ export const createSplitsSlice: StateCreator<BrowserState, [], [], SplitsSlice> 
     }
     const split = withPane(current, anchor.id, tabId, o.side ?? "right", windowId);
     if (!split) return { ok: false, reason: "max" };
-    s = gather({ ...s, splits: { ...s.splits, [split.id]: split } }, anchor.id, splitTabIds(split), joining);
+    s = gather({ ...s, splits: { ...s.splits, [split.id]: split } }, anchor.id, splitTabIds(split), joining, splitTabIdsOf(existing));
     if (o.dropped) s = withEmptiedFoldersKept(beforeDrop, s, new Set([tabId, ...splitTabIds(split).filter((id) => id !== anchor.id)]));
     if (!o.background) s = apply(s, activated(s, tabId));
     set(s);

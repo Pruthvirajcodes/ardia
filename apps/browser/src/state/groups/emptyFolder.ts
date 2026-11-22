@@ -1,9 +1,9 @@
 import type { BrowserState } from "../browser/store";
 import type { Tab, TabGroup } from "../browser/types";
-import { findLast, makeTab, newId, pinKeyOf } from "../browser/model";
+import { findLast, makeTab, pinKeyOf } from "../browser/model";
 import { ASLEEP, hasPage } from "../tabs/pageSession";
 import { isRegularWindow } from "../windows/small";
-import { splitOf, splitTabIdsOf } from "../splits/splits";
+import { removeFromSplits, splitOf, splitTabIdsOf } from "../splits/splits";
 import { groupKeptOpen } from "./closeGuard";
 import { ancestorIds, orderSections, placeGroups, syncGroupOrder } from "./groups";
 
@@ -15,7 +15,7 @@ export const emptyFolderRow = (windowId: string, profileId: string): Tab => ({
   page: ASLEEP,
 });
 
-const isBlank = (t: Tab | undefined) => !!t && (!t.url || t.url === EMPTY_FOLDER_URL);
+const isBlank = (t: Tab | undefined) => !!t && [t.url, t.pinnedUrl].every((url) => !url || url === EMPTY_FOLDER_URL);
 
 export const isEmptyFolderRow = (t: Tab | undefined) => isBlank(t) && !hasPage(t!);
 
@@ -28,15 +28,13 @@ export function withoutEmptyFolderRows(s: BrowserState, ids: string[]): string[]
 export const outsideKeptFolders = (s: BrowserState, ids: string[]) =>
   ids.filter((id) => !Object.values(s.groups).some((g) => g.tabIds.includes(id) && groupKeptOpen(g.id)));
 
-export function apartFromKeptFolderLink(s: BrowserState, t: Tab, intoGroupId: string | null): Tab {
-  const key = pinKeyOf(t);
-  const into = intoGroupId ? [intoGroupId, ...ancestorIds(s.groups, intoGroupId)] : [];
-  const besideItsLink = Object.values(s.groups).some(
-    (g) =>
-      g.pinned && !g.parentId && g.windowId === t.windowId && !into.includes(g.id) && !g.tabIds.includes(t.id) &&
-      g.tabIds.some((id) => s.tabs[id] && pinKeyOf(s.tabs[id]!) === key) && groupKeptOpen(g.id),
-  );
-  return besideItsLink ? { ...t, pinKey: newId("tab") } : t;
+export const keptFolderOf = (s: Pick<BrowserState, "groups">, id: string) =>
+  Object.values(s.groups).find((g) => g.pinned && !g.parentId && g.tabIds.includes(id) && groupKeptOpen(g.id))?.id;
+
+export function apartAtKeptFolderEdge(s: BrowserState, anchorId: string, members: string[], joining: string[], paired: string[]): [BrowserState, string[]] {
+  const home = keptFolderOf(s, anchorId);
+  const staying = new Set(paired.filter((id) => id !== anchorId && !joining.includes(id) && keptFolderOf(s, id) !== home));
+  return staying.size ? [{ ...s, splits: removeFromSplits(s.splits, staying) }, members.filter((id) => !staying.has(id))] : [s, members];
 }
 
 export function withEmptiedFoldersKept(before: BrowserState, after: BrowserState, left: ReadonlySet<string>): BrowserState {

@@ -10,6 +10,7 @@ import type { BrowserWindow, SplitView, Tab, TabGroup } from "../browser/types";
 import { samePage } from "../../lib/url";
 import { isRegularWindow } from "../windows/small";
 import { tileFolderOf } from "./tileFolders";
+import { apartFromKeptFolders } from "./keptFolderCopies";
 
 const homeOf = (t: Pick<Tab, "url" | "pinnedUrl">) => t.pinnedUrl || t.url;
 
@@ -317,7 +318,11 @@ export function mirrorPins(s: BrowserState, prev: BrowserState): BrowserState | 
   let next = s;
   for (const [profileId, ids] of byProfile) {
     for (const id of ids) {
-      const x = withSplits(next, next.windows[id]!, sectionOf(next, next.windows[id]!, profileId, pinnedGroupsOf(next)));
+      const sectionNow = () => withSplits(next, next.windows[id]!, sectionOf(next, next.windows[id]!, profileId, pinnedGroupsOf(next)));
+      let x = sectionNow();
+      if (!hasDuplicates(x)) continue;
+      next = apartFromKeptFolders(next, prev, id, profileId);
+      x = sectionNow();
       if (hasDuplicates(x)) next = conform(next, id, profileId, union([x]));
     }
   }
