@@ -193,7 +193,7 @@ test("a range that ends before a possessive takes it as the suffix", () => {
 });
 
 test("an edge ICU may join across takes a prefix or suffix", () => {
-  for (const joiner of ["\u200c", "\u200d", "\u2060", "\uff07", "\ufe52", "\u0387", "\u055f", "\u203f", "\uff3f", "\u202f"]) {
+  for (const joiner of ["\u200c", "\u200d", "\uff07", "\ufe52", "\u0387", "\u055f", "\u203f", "\uff3f"]) {
     const pageText = `Read Bob${joiner}Alice first then ask Alice today.`;
     const first = chooseTextFragment({ selected: "Alice", before: `Read Bob${joiner}`, after: " first then ask Alice today.", pageText });
     assert.ok(first?.prefix, `U+${joiner.charCodeAt(0).toString(16)} before`);
@@ -275,6 +275,31 @@ test("a word repeated through the whole page gives up instead of scoring every c
   const started = Date.now();
   assert.equal(chooseTextFragment({ selected: "x", before: "x ".repeat(100), after: " end", pageText: `${"x ".repeat(1_400_000)}x end` }), null);
   assert.ok(Date.now() - started < 3000);
+});
+
+test("a joined edge whose context Chrome can't reach is no link, not a dead one", () => {
+  for (const joiner of ["\u2060", "\u202f"]) {
+    const pageText = `Read Bob${joiner}Alice first then ask Alice today.`;
+    assert.equal(chooseTextFragment({ selected: "Alice", before: `Read Bob${joiner}`, after: " first then ask Alice today.", pageText }), null);
+  }
+});
+
+test("a zero-width space is a word edge, so a heading's hash link needs no context", () => {
+  const pageText = "Requirements\u200b\nInstall Node first.";
+  assert.deepEqual(chooseTextFragment({ selected: "Requirements", before: "", after: "\u200b", pageText }), { start: "Requirements" });
+});
+
+test("a range ending before a zero-width space takes no suffix of it", () => {
+  const selected = "Before installing anything on a production server you should always read the manual";
+  const pageText = `Intro.\n${selected}\u200bbefore use.\nBeginners should read the manual before use.`;
+  const fragment = chooseTextFragment({ selected, before: "", after: "\u200bbefore use.", pageText });
+  assert.equal(fragment?.end, "read the manual");
+  assert.equal(fragment?.suffix, undefined);
+});
+
+test("a first copy doesn't borrow the line above to be unique", () => {
+  const pageText = "Installation\u200b\nRun the command\nBody text.\nLater, again: Run the command";
+  assert.deepEqual(chooseTextFragment({ selected: "Run the command", before: "", after: "", pageText }), { start: "Run the command" });
 });
 
 test("words split by a comma are words of their own", () => {

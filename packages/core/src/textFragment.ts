@@ -27,7 +27,11 @@ const CHUNK_CHARS = 32_768;
 
 const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\u30fc\uff70]/u;
 const WORD_CHAR = /[\p{L}\p{N}\p{M}_]/u;
-const JOINABLE = /[\p{L}\p{N}\p{M}\p{Cf}\p{Pc}\u202f]/u;
+const JOINABLE = /[\p{L}\p{N}\p{M}\p{Pc}\u202f]|(?!\u200b)\p{Cf}/u;
+const FORMAT = /\p{Cf}/u;
+const ONLY_FORMAT = /^\p{Cf}+$/u;
+const UNREACHABLE_EDGE = /(?![\u200c\u200d])\p{Cf}/u;
+const UNSKIPPED_GAP = /[\u202f\ufeff]/;
 const FOLDS: Record<string, string> = {
   ß: "ss", œ: "oe", æ: "ae", ø: "o", đ: "d", ð: "d", ł: "l", ħ: "h", ς: "σ", "„": '"',
   ך: "כ", ם: "מ", ן: "נ", ף: "פ", ץ: "צ", ة: "ه", ى: "ي", "\u0640": "",
@@ -103,7 +107,9 @@ const isJoinable = (char: string | undefined) => !!char && JOINABLE.test(char);
 function isSureWordEdge(text: string, at: number): boolean {
   const left = charBefore(text, at);
   const right = charAfter(text, at);
-  if (!left || !right) return true;
+  if (!left || !right || left === "\u200b" || right === "\u200b") return true;
+  if (right === "\u202f" && !isJoinable(left)) return true;
+  if (FORMAT.test(left) && (at === left.length || /\s/.test(text[at - left.length - 1]!))) return true;
   if (isJoinable(left) && isJoinable(right)) return false;
   if (isJoinable(left) && !/\s/.test(right)) return !isJoinable(charAfter(text, at + right.length));
   if (isJoinable(right) && !/\s/.test(left)) return !isJoinable(charBefore(text, at - left.length));
@@ -199,18 +205,21 @@ function prefixesFor(page: Page, from: number): Span[] {
   let to = from;
   while (to > 0 && page.text[to - 1] !== "\n" && /\s/.test(page.text[to - 1]!)) to--;
   if (page.text[to - 1] === "\n") to--;
-  if (to <= 0) return [];
+  if (to <= 0 || UNREACHABLE_EDGE.test(charBefore(page.text, to)!) || UNSKIPPED_GAP.test(page.text.slice(to, from))) return [];
   const line = { from: page.text.lastIndexOf("\n", to - 1) + 1, to };
-  return wordsIn(page, line).slice(-MAX_CONTEXT_WORDS).reverse().map((word) => ({ from: word.from, to }));
+  const spans = wordsIn(page, line).slice(-MAX_CONTEXT_WORDS).reverse().map((word) => ({ from: word.from, to }));
+  return spans.filter((span) => !ONLY_FORMAT.test(textOf(page, span)));
 }
 
 function suffixesFor(page: Page, to: number): Span[] {
   let from = to;
   while (from < page.text.length && page.text[from] !== "\n" && /\s/.test(page.text[from]!)) from++;
   if (page.text[from] === "\n") from++;
+  if (UNREACHABLE_EDGE.test(charAfter(page.text, from) ?? "") || UNSKIPPED_GAP.test(page.text.slice(to, from))) return [];
   const lineEnd = page.text.indexOf("\n", from);
   const line = { from, to: lineEnd === -1 ? page.text.length : lineEnd };
-  return wordsIn(page, line).slice(0, MAX_CONTEXT_WORDS).map((word) => ({ from, to: word.to }));
+  const spans = wordsIn(page, line).slice(0, MAX_CONTEXT_WORDS).map((word) => ({ from, to: word.to }));
+  return spans.filter((span) => !ONLY_FORMAT.test(textOf(page, span)));
 }
 
 const keyOf = (page: Page, span: Span | undefined) => (span ? looselyFolded(page.text.slice(span.from, span.to)) : "");
@@ -235,6 +244,9 @@ function nothingMatchesLater(key: string, at: number, prefix: string, start: str
   return true;
 }
 
+const isOnItsLine = ({ text }: Page, target: Target, prefix?: Span, suffix?: Span) =>
+  !(prefix && text.slice(prefix.to, target.from).includes("\n")) && !(suffix && text.slice(target.to, suffix.from).includes("\n"));
+
 function exactFragment(page: Page, target: Target): TextFragment | null {
   const prefixes = prefixesFor(page, target.from);
   const suffixes = suffixesFor(page, target.to);
@@ -256,6 +268,7 @@ function exactFragment(page: Page, target: Target): TextFragment | null {
     const before = keyOf(page, prefix);
     const after = keyOf(page, suffix);
     if (!nothingMatchesEarlier(page.key, target.keyFrom, before, start, after)) continue;
+    if (first && !isOnItsLine(page, target, prefix, suffix)) continue;
     first ??= [prefix, suffix];
     if (!nothingMatchesLater(page.key, target.keyFrom, before, start, after)) continue;
     chosen = [prefix, suffix];
