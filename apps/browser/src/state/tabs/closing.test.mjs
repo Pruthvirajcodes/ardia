@@ -136,6 +136,24 @@ test("closing the group in front shows a slept regular tab above it before an aw
   assert.equal(activeTabId(S(), w), home);
 });
 
+for (const kind of ["pinned row", "regular tab"]) {
+  test(`closing the group in front doesn't load a ${kind} it doesn't show`, (t) => {
+    const { w, ids: [home, idle, c] } = visitedInOrder(t, "home", "idle", "c");
+    if (kind === "pinned row") S().pinTabs([idle], true, true);
+    const g = S().groupTabs([c], { pinned: false });
+    if (kind === "regular tab") S().placeTabs([idle], { pinned: false, beforeId: null });
+    S().activate(c);
+    if (kind === "pinned row") noteDiscarded(home, "external");
+    useBrowser.setState((s) => ({ tabs: { ...s.tabs, [idle]: { ...s.tabs[idle], page: { kind: "idle" } } } }));
+    const before = S().tabs[idle];
+    t.mock.timers.tick(100);
+    S().closeGroup(g);
+    assert.equal(activeTabId(S(), w), home);
+    assert.equal(S().tabs[idle].page.kind, "idle");
+    assert.equal(S().tabs[idle].lastActiveAt, before.lastActiveAt);
+  });
+}
+
 test("switching to a copy of a slept page in another window wakes nothing, so it isn't counted", async (t) => {
   const { ids: [a, b] } = visitedInOrder(t, "a", "b");
   S().updateSettings({ shareTabsAcrossWindows: true });

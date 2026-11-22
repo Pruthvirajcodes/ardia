@@ -64,11 +64,11 @@ export function closeQuietly(s: BrowserState, ids: string[]): BrowserState {
   return removeTabs(s, ids, false);
 }
 
-function showAboveGroup(before: BrowserState, s: BrowserState, g: TabGroup): BrowserState {
+function showAboveGroup(s: BrowserState, g: TabGroup): BrowserState {
   const w = s.windows[g.windowId];
-  const was = before.windows[g.windowId]?.activeTabIds[g.profileId];
+  const was = w?.activeTabIds[g.profileId];
   if (!w || !was || !g.tabIds.includes(was)) return s;
-  const order = viewTabIds(before, g.windowId, g.profileId).filter((id) => !inPinnedContainer(before, id));
+  const order = viewTabIds(s, g.windowId, g.profileId).filter((id) => !inPinnedContainer(s, id));
   const at = order.indexOf(g.tabIds[0]!);
   const stays = (id: string) => !!s.tabs[id] && !g.tabIds.includes(id) && !isAsleep(s.tabs[id]);
   const nearest = [...order.slice(0, at).reverse(), ...order.slice(at)].filter(stays);
@@ -96,7 +96,7 @@ export function closingGroup(s: BrowserState, groupId: string, deleted = false):
     closedAt: Date.now(),
   };
   const recordable = w.kind !== "private" && entry.tabs.some((t) => t.url);
-  const next = showAboveGroup(s, closeQuietly(s, g.tabIds), g);
+  const next = closeQuietly(showAboveGroup(s, g), g.tabIds);
   if (!recordable) return next;
   if (deleted) return { ...next, deletedGroups: [...keptDeletedGroups(next.deletedGroups), entry] };
   return { ...next, closedGroups: [...next.closedGroups, entry].slice(-MAX_CLOSED_GROUPS) };
