@@ -28,7 +28,7 @@ object ThemeTextures {
     fun alphas(texture: ThemeTexture): ByteArray {
         val n = SIDE
         val alpha = FloatArray(n * n)
-        var state = 0x9E3779B9.toUInt()
+        var state = 0x9E3779B9u
         fun random(): Float {
             state = state xor (state shl 13)
             state = state xor (state shr 17)
