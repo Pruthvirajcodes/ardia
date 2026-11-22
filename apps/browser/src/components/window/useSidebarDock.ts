@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useInsertionEffect, useRef, useState } from "react";
 import { Animated } from "react-native";
 import { switchOn } from "../../state/app/switches";
 import { useWindowId } from "../../state/browser/hooks";
 import { noteSidebarJumpHide, noteSidebarSlide } from "../../state/telemetry/dockCounts";
 import { peekShown, setDockMoving } from "../../state/windows/dockMotion";
 import { reduceMotion } from "../ui";
-import { curve } from "../ui/motion";
+import { curve, keepAttached } from "../ui/motion";
 import { dockMove } from "./dockMotion";
 import { ARC_HIDE_MS, DOCK_SLIDE } from "./tokens";
 
@@ -14,6 +14,7 @@ export function useSidebarDock(open: boolean, animate: boolean, arc: boolean): {
   const dock = useRef(new Animated.Value(open ? 1 : 0)).current;
   const was = useRef(open);
   const [away, setAway] = useState(!open);
+  useInsertionEffect(() => keepAttached(dock), [dock]);
   useEffect(() => {
     if (was.current === open) return;
     was.current = open;
