@@ -330,6 +330,7 @@ export function switchDeckIncognito() {
 export function toggleTrayIncognito() {
   const was = useTabs.getState().incognito;
   if (searchState().incognitoOnCancel === null) useSearch.setState({ incognitoOnCancel: was });
+  if (!was) countUsage("tray_incognito_switches");
   setIncognito(!was);
   refreshSearchRows();
 }

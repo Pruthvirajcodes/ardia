@@ -38,6 +38,10 @@ export const PHONE_WHATS_SENT: { title: string; items: SentItem[] }[] = [
         fields: ["interface_style", "color_scheme"],
       },
       {
+        text: "With each launch, whether your color matches your Mac, is one of Ardia’s colors, or is a custom theme. Never which colors",
+        fields: ["color_choice"],
+      },
+      {
         text: "On Android, with each launch, whether the Material You design was off, and with it on, whether Dynamic Colors used your wallpaper, Ardia used your custom colour, or the phone gave no wallpaper palette and Ardia used its own",
         fields: ["material_colors"],
       },
@@ -63,11 +67,15 @@ export const PHONE_WHATS_SENT: { title: string; items: SentItem[] }[] = [
       },
       {
         text: "In the same daily counts, on iPhone: how many Browse for Me answers Talk to Me read aloud and how many of those you started by holding the phone to your ear, how often its voice finished downloading or failed to, and how often it couldn’t speak. Counts only, never what it read",
-        fields: ["talk_to_me_answers_read", "talk_to_me_ear_listens", "talk_to_me_voice_downloads", "talk_to_me_download_failed", "talk_to_me_failed"],
+        fields: ["talk_to_me_answers_read", "talk_to_me_ear_listens", "talk_to_me_voice_downloads", "talk_to_me_download_failed", "talk_to_me_failed", "tray_incognito_switches"],
       },
       {
         text: "In the same daily counts, on iPhone: how often you summarized a page by pinching in or from the page menu, how many summaries Apple Intelligence wrote on the phone or were the page’s own lines, and how many it couldn’t write. Counts only, never which page or what the summary said",
         fields: ["page_summaries_pinched", "page_summaries_from_menu", "page_summaries_on_device", "page_summaries_excerpts", "page_summaries_failed"],
+      },
+      {
+        text: "In the same daily counts, on Android: when a search answer or a page summary couldn’t use Gemini Nano, why: it was still downloading, Google doesn’t offer it to apps on this phone, it needed a Google AICore or system update, or it failed. Counts only, never what you searched for or which page",
+        fields: ["gemini_nano_downloading", "gemini_nano_not_offered", "gemini_nano_needs_update", "gemini_nano_errors"],
       },
       {
         text: "In the same daily counts: how often you tapped Paste and Go with a link or with text, and how often it found nothing to paste because you didn’t allow the paste or the clipboard had emptied. Never what you copied, and never while browsing privately",
@@ -90,6 +98,10 @@ export const PHONE_WHATS_SENT: { title: string; items: SentItem[] }[] = [
         fields: ["page_pictures_blank", "page_pictures_hidden", "page_pictures_webkit"],
       },
       {
+        text: "In the same daily counts: how often you chose Custom in Settings › Appearance, and how many changes you made on its Theme page. Counts only, never the colors or settings you picked",
+        fields: ["custom_theme_chosen", "theme_edits"],
+      },
+      {
         text: "In the same daily counts, on Android: how often you tapped the Ardia logo on the start page to search. Counts only, and never while browsing privately",
         fields: ["start_logo_taps"],
       },
@@ -98,7 +110,7 @@ export const PHONE_WHATS_SENT: { title: string; items: SentItem[] }[] = [
         fields: ["page_summaries_chatgpt", "page_summaries_chatgpt_fallbacks"],
       },
       {
-        text: "In the same daily counts, on Android: how often you turned the Material You design on or off in Settings, how often you closed the find bar, and with Material You on, how often you closed a tab with its card’s close button, went back with the system’s back swipe, opened Archive from the bottom bar, opened the page menu from the address bar, and pulled Search or the page menu up to full screen. Counts only, never which page, and never while browsing privately",
+        text: "In the same daily counts, on Android: how often you turned the Material You design on or off in Settings, how often you closed the find bar, and with Material You on, how often you closed a tab with its card’s close button, went back with the system’s back swipe, opened Archive from the bottom bar, opened the page menu from the address bar, and pulled Search or the page menu up to full screen, and with it off, how often you dragged the page menu from half height to full. Counts only, never which page, and never while browsing privately",
         fields: ["find_closed_bar", "card_close_tapped", "material_back_swiped", "archive_bar_opened", "site_settings_sheet_opened", "search_sheet_expanded", "site_settings_sheet_expanded", "material_you_turned_on", "material_you_turned_off"],
       },
     ],
