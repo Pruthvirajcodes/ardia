@@ -251,6 +251,32 @@ test("Hebrew finals, Arabic letters and digits are seen as an earlier match", ()
   }
 });
 
+test("a selection repeated later takes context, so a miss can't land on the copy", () => {
+  const pageText = "Please read carefully now\nPlease read carefully later";
+  const fragment = chooseTextFragment({ selected: "Please read carefully", before: "", after: " now", pageText });
+  assert.deepEqual(fragment, { start: "Please read carefully", suffix: "now" });
+});
+
+test("a term doesn't end at a fullwidth stop inside a number", () => {
+  const selected = "The version 1．2 is out right now with many new features and fixes for everyone";
+  assert.equal(chooseTextFragment({ selected, before: "", after: "", pageText: selected })?.start, "The version 1．2");
+});
+
+test("a wide space between the words is still an earlier match", () => {
+  const fragment = chooseTextFragment({ selected: "bar", before: "foo ", after: " baz", pageText: "bar\nfoo \u205f bar\nfoo bar baz" });
+  assert.equal(fragment?.suffix, "baz");
+});
+
+test("a selection not on a page of a million lines is no link, not a crash", () => {
+  assert.equal(chooseTextFragment({ selected: "a\nmissing", before: "", after: "", pageText: "a\n".repeat(1_050_000) }), null);
+});
+
+test("a word repeated through the whole page gives up instead of scoring every copy", () => {
+  const started = Date.now();
+  assert.equal(chooseTextFragment({ selected: "x", before: "x ".repeat(100), after: " end", pageText: `${"x ".repeat(1_400_000)}x end` }), null);
+  assert.ok(Date.now() - started < 3000);
+});
+
 test("words split by a comma are words of their own", () => {
   assert.equal(chooseTextFragment({ selected: "world", before: "hello,", after: "", pageText: "hello,world" })?.start, "world");
 });

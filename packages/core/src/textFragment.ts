@@ -20,6 +20,7 @@ const MAX_CONTEXT_WORDS = 5;
 const CONTEXT_CHARS = 200;
 const CAPPED_CONTEXT_CHARS = 48;
 const PAGE_TEXT_CAP = 3_000_000;
+const MAX_SCORING_WORK = 3_000_000;
 const CHUNK_CHARS = 32_768;
 
 const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\u30fc\uff70]/u;
@@ -30,7 +31,7 @@ const FOLDS: Record<string, string> = {
   ך: "כ", ם: "מ", ן: "נ", ף: "פ", ץ: "צ", ة: "ه", ى: "ي", "\u0640": "",
 };
 const FOLDABLE = new RegExp(`[${Object.keys(FOLDS).join("")}]`, "g");
-const TERM_WORD = /(?:[^\s。、，．！？：；「」『』（）]|\u202f)+[。、，．！？：；「」『』（）]*|[。、，．！？：；「」『』（）]+/g;
+const TERM_WORD = /(?:[^\s。、，．！？：；「」『』（）]|\u202f|[，．：；](?=[0-9A-Za-z\uff10-\uff19]))+[。、，．！？：；「」『』（）]*|[。、，．！？：；「」『』（）]+/g;
 
 function mapChunks(text: string, map: (chunk: string) => string): string {
   if (text.length <= CHUNK_CHARS) return map(text);
@@ -65,7 +66,8 @@ function looselyFolded(text: string): string {
       .replace(/[“”״]/g, '"')
       .replace(FOLDABLE, (char) => FOLDS[char]!)
       .replace(/[\u0660-\u0669\u06f0-\u06f9]/g, (digit) => String(digit.charCodeAt(0) & 15))
-      .replace(/[\u30a1-\u30f6]/g, (kana) => String.fromCharCode(kana.charCodeAt(0) - 0x60));
+      .replace(/[\u30a1-\u30f6]/g, (kana) => String.fromCharCode(kana.charCodeAt(0) - 0x60))
+      .replace(/\s{2,}|[^\S ]/g, " ");
   });
 }
 
@@ -148,6 +150,8 @@ function sharedAfter(text: string, at: number, context: string): number {
   return shared;
 }
 
+const withoutBreaks = (text: string) => mapChunks(text, (chunk) => chunk.replace(/\n/g, " "));
+
 function selectionSpan(text: string, { selected, before, after }: SelectionContext, truncated: boolean): Span | null {
   const wanted = collapsed(selected);
   if (!wanted) return null;
@@ -156,6 +160,7 @@ function selectionSpan(text: string, { selected, before, after }: SelectionConte
   const bestIn = (haystack: string, needle: string): Span | null | undefined => {
     let best: Span | null | undefined;
     let bestScore = -1;
+    let work = 0;
     for (let from = haystack.indexOf(needle); from !== -1; from = haystack.indexOf(needle, from + 1)) {
       const to = from + needle.length;
       if (!left && from > 0 && text[from - 1] !== "\n") continue;
@@ -163,6 +168,8 @@ function selectionSpan(text: string, { selected, before, after }: SelectionConte
       const leftShared = left ? sharedBefore(text, from, left) : 0;
       const rightShared = right ? sharedAfter(text, to, right) : 0;
       const score = leftShared + rightShared;
+      work += score + 1;
+      if (work > MAX_SCORING_WORK) return null;
       if (score < bestScore) continue;
       if (truncated && (!score || leftShared < Math.min(CAPPED_CONTEXT_CHARS, left.length) || rightShared < Math.min(CAPPED_CONTEXT_CHARS, right.length))) continue;
       if (isInsideWord(text, from) || isInsideWord(text, to)) continue;
@@ -173,7 +180,7 @@ function selectionSpan(text: string, { selected, before, after }: SelectionConte
   };
   const found = bestIn(text, wanted);
   if (found !== undefined) return found;
-  return bestIn(text.replace(/\n/g, " "), wanted.replace(/\n/g, " ")) ?? null;
+  return bestIn(withoutBreaks(text), withoutBreaks(wanted)) ?? null;
 }
 
 function wordsIn({ text }: Page, { from, to }: Span): Span[] {
@@ -211,6 +218,15 @@ function nothingMatchesEarlier(key: string, at: number, prefix: string, start: s
   return true;
 }
 
+function nothingMatchesLater(key: string, at: number, prefix: string, start: string, suffix: string): boolean {
+  for (const beforeStart of prefix ? ["", " "] : [""]) {
+    for (const afterStart of suffix ? ["", " "] : [""]) {
+      if (key.indexOf(prefix + beforeStart + start + afterStart + suffix, at + 1) !== -1) return false;
+    }
+  }
+  return true;
+}
+
 function exactFragment(page: Page, target: Target): TextFragment | null {
   const prefixes = prefixesFor(page, target.from);
   const suffixes = suffixesFor(page, target.to);
@@ -225,12 +241,22 @@ function exactFragment(page: Page, target: Target): TextFragment | null {
   }
   const needsPrefix = !isSureWordEdge(page.text, target.from);
   const needsSuffix = !isSureWordEdge(page.text, target.to);
+  let first: [Span | undefined, Span | undefined] | null = null;
+  let chosen: [Span | undefined, Span | undefined] | null = null;
   for (const [prefix, suffix] of contexts) {
     if ((needsPrefix && !prefix) || (needsSuffix && !suffix)) continue;
-    if (nothingMatchesEarlier(page.key, target.keyFrom, keyOf(page, prefix), start, keyOf(page, suffix)))
-      return { ...(prefix && { prefix: textOf(page, prefix) }), start: textOf(page, target), ...(suffix && { suffix: textOf(page, suffix) }) };
+    const before = keyOf(page, prefix);
+    const after = keyOf(page, suffix);
+    if (!nothingMatchesEarlier(page.key, target.keyFrom, before, start, after)) continue;
+    first ??= [prefix, suffix];
+    if (!nothingMatchesLater(page.key, target.keyFrom, before, start, after)) continue;
+    chosen = [prefix, suffix];
+    break;
   }
-  return null;
+  const found = chosen ?? first;
+  if (!found) return null;
+  const [prefix, suffix] = found;
+  return { ...(prefix && { prefix: textOf(page, prefix) }), start: textOf(page, target), ...(suffix && { suffix: textOf(page, suffix) }) };
 }
 
 function rangeStart(page: Page, target: Target, words: Span[]): { term: Span; prefix?: Span } | null {
