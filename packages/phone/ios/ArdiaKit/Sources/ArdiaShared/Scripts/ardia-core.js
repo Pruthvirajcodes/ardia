@@ -3620,6 +3620,7 @@ __define("packages/core/src/theme.ts", function (exports, __require) {
   __export(exports, "flatColors", () => flatColors);
   __export(exports, "themeAccent", () => themeAccent);
   __export(exports, "themePalette", () => themePalette);
+  __export(exports, "backdropUnderColor", () => backdropUnderColor);
   __export(exports, "themeUnderColor", () => themeUnderColor);
   __export(exports, "opaqueThemeTint", () => opaqueThemeTint);
   __export(exports, "themeLuminance", () => themeLuminance);
@@ -3855,15 +3856,23 @@ function themePalette(theme           )           {
   return theme.stops.map((s) => colorHex(s.color));
 }
 
-function underGrey(theme           , dark         )         {
-  const u = themeUnderlayAlpha(theme, dark);
+function backdropUnderGrey(underlayAlpha        , dark         )         {
+  const u = clamp01(underlayAlpha);
   const blur = dark ? 0.16 : 0.92;
   return (dark ? 0 : 1) * u + blur * (1 - u);
 }
 
-function themeUnderColor(theme           , dark         )         {
-  const grey = underGrey(theme, dark);
+function underGrey(theme           , dark         )         {
+  return backdropUnderGrey(themeUnderlayAlpha(theme, dark), dark);
+}
+
+function backdropUnderColor(underlayAlpha        , dark         )         {
+  const grey = backdropUnderGrey(underlayAlpha, dark);
   return unitHex([grey, grey, grey]);
+}
+
+function themeUnderColor(theme           , dark         )         {
+  return backdropUnderColor(themeUnderlayAlpha(theme, dark), dark);
 }
 
 function composite(theme           , dark         , x        , y        )           {
