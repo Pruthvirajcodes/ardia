@@ -1,5 +1,10 @@
 import type { Download } from "./actions";
 
+export const isUnfinished = (d: Pick<Download, "state">) => d.state === "downloading";
+
+export const rowsPastCap = (downloads: readonly Download[], cap: number) =>
+  [...downloads.filter(isUnfinished), ...downloads.filter((d) => !isUnfinished(d))].slice(cap);
+
 export const awaitsKeep = (d: Pick<Download, "state" | "dangerous">) => d.state === "downloading" && d.dangerous === true;
 
 function formatBytes(n: number) {

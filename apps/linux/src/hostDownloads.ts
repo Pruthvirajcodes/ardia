@@ -3,6 +3,7 @@ import type { ArdiaHost } from "./host";
 import { callHost, reportHostError } from "./host.ts";
 import { hostFiles } from "./hostFiles.ts";
 import { showToast } from "../../browser/src/state/app/toasts";
+import { rowsPastCap } from "../../browser/src/state/downloads/status.ts";
 
 const DOWNLOAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATES = new Set(["downloading", "finished", "failed", "cancelled"]);
@@ -35,9 +36,11 @@ export function planDownloadSnapshot(current: Download[], snapshot: unknown, exc
     seen.add(d.id);
     listed.push(d);
   }
-  const merged = [...current, ...listed.filter((d) => !known.has(d.id))].slice(0, limit);
-  const added = merged.slice(current.length);
-  return { downloads: added.length ? merged : null, added };
+  const merged = [...current, ...listed.filter((d) => !known.has(d.id))];
+  const evicted = new Set(rowsPastCap(merged, limit));
+  const kept = merged.filter((d) => !evicted.has(d));
+  const added = kept.filter((d) => !known.has(d.id));
+  return { downloads: added.length ? kept : null, added };
 }
 
 export const mergeDownloadSnapshot = (current: Download[], snapshot: unknown, limit = DOWNLOAD_LIMIT) =>

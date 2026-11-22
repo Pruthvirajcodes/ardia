@@ -5,7 +5,7 @@ import type { BrowserWindow } from "../browser/types";
 import type { BrowserState } from "../browser/store";
 import { engineProfile, isIncognitoProfile, privateSession } from "../browser/model";
 import { focusedWindowOf, patchWindowUi } from "../windows/ui";
-import { awaitsKeep } from "./status";
+import { awaitsKeep, isUnfinished, rowsPastCap } from "./status";
 import { noteDownloadsPanel } from "../telemetry/downloadsPanelCounts";
 import { forgetDownloadProgress, showDownloadProgress, withoutProgress } from "./progress";
 
@@ -19,9 +19,6 @@ export type DownloadsSlice = {
 };
 
 const MAX_DOWNLOADS = 100;
-const isUnfinished = (d: Download) => d.state === "downloading";
-const rowsToEvict = (downloads: Download[]) =>
-  [...downloads.filter(isUnfinished), ...downloads.filter((d) => !isUnfinished(d))].slice(MAX_DOWNLOADS - 1);
 
 export function downloadSession(s: Pick<BrowserState, "profiles">, d: Pick<Download, "profile" | "offTheRecord">): string | null {
   if (d.offTheRecord) return d.profile ?? "";
@@ -81,7 +78,7 @@ export const createDownloadsSlice: StateCreator<BrowserState, [], [], DownloadsS
       }
       const record = withoutProgress(d);
       if (listed && shallow(listed, record)) return s;
-      if (!listed) evicted = rowsToEvict(s.downloads);
+      if (!listed) evicted = rowsPastCap(s.downloads, MAX_DOWNLOADS - 1);
       const downloads = listed ? s.downloads.map((x) => (x.id === d.id ? record : x)) : [record, ...s.downloads.filter((x) => !evicted.includes(x))];
       const focused = focusedWindowOf(s);
       const newlyHeld = awaitsKeep(d) && !s.downloads.some((x) => x.id === d.id && awaitsKeep(x));

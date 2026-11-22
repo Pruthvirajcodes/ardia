@@ -64,6 +64,22 @@ test("the startup snapshot fills the list once, newest first, after live entries
   assert.equal(mergeDownloadSnapshot(many.slice(0, 100), [download(500)]), null);
 });
 
+test("the startup snapshot keeps unfinished downloads past 100 newer ended ones, in their order", () => {
+  const live = [download(4, { state: "downloading", paused: true }), download(3, { state: "downloading" }), download(2, { state: "downloading", dangerous: true })];
+  const ended = Array.from({ length: 100 }, (_, n) => download(200 - n, { state: ["finished", "failed", "cancelled"][n % 3] }));
+  const ids = (list) => list.map((d) => d.id);
+  assert.deepEqual(ids(mergeDownloadSnapshot([], [...ended, ...live])), ids([...ended.slice(0, 97), ...live]));
+  assert.deepEqual(ids(mergeDownloadSnapshot([], [live[0], ...ended, live[1]])), ids([live[0], ...ended.slice(0, 98), live[1]]));
+  assert.deepEqual(ids(mergeDownloadSnapshot(ended, [live[0]])), ids([...ended.slice(0, 99), live[0]]));
+  assert.deepEqual(ids(mergeDownloadSnapshot([live[0]], [...ended, live[1]])), ids([live[0], ...ended.slice(0, 98), live[1]]));
+});
+
+test("a snapshot of only unfinished downloads still caps at the 100 newest", () => {
+  const live = Array.from({ length: 120 }, (_, n) => download(120 - n, { state: "downloading", paused: n % 2 === 0 }));
+  assert.deepEqual(mergeDownloadSnapshot([], live).map((d) => d.id), live.slice(0, 100).map((d) => d.id));
+  assert.equal(mergeDownloadSnapshot(live.slice(0, 100), [download(500)]), null);
+});
+
 test("startup lists downloads through the regular profile without opening the popover path", async () => {
   const f = fixture([download(2), download(1)]);
   const running = startHostDownloads(f.host, f.store);
@@ -179,6 +195,29 @@ test("the startup snapshot never announces itself as a new download in the focus
   assert.deepEqual(fresh, []);
   useBrowser.getState().upsertDownload(download(3, { state: "downloading" }));
   assert.deepEqual(fresh, [ID(3)]);
+  stopWatch();
+  running.stop();
+});
+
+test("a new window lists a paused download older than 100 finished ones, unannounced, and keeps it past new ones and Clear", async () => {
+  const paused = download(1, { state: "downloading", paused: true, received: 3 });
+  const f = fixture([...Array.from({ length: 100 }, (_, n) => download(200 - n)), paused]);
+  const store = focusedStore(f.host);
+  const fresh = [];
+  const stopWatch = watchNewDownloads("main", (d) => fresh.push(d.id));
+  const running = startHostDownloads(f.host, store);
+  await running.ready;
+  const listed = store.getState().downloads;
+  assert.equal(listed.length, 100);
+  assert.deepEqual(listed.at(-1), { ...paused, profile: "" });
+  assert.equal(listed.at(-2).id, ID(102));
+  assert.deepEqual(fresh, []);
+  store.getState().upsertDownload(download(300));
+  assert.equal(store.getState().downloads.at(-1).id, ID(1));
+  store.getState().clearDownloads("main");
+  await settle();
+  assert.deepEqual(store.getState().downloads.map((d) => d.id), [ID(1)]);
+  assert.deepEqual(f.calls.find((c) => c.name === "downloads.clear").args.keep, [ID(1)]);
   stopWatch();
   running.stop();
 });
