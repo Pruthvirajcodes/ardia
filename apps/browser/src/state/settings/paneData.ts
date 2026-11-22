@@ -25,6 +25,7 @@ import { setMenuBarShortcuts } from "../commands/commandShortcuts";
 import { UNAVAILABLE_COMMANDS } from "../commands/commandCatalog";
 import { currentSettings } from "../browser/current";
 import { engineProfile } from "../browser/model";
+import { downloadSharingSettled } from "../downloads/sharedSettings";
 import { currentSyncFolder, folderInfo } from "../sync/engine";
 import { extensionsProfileId, refreshExtensions } from "../extensions/actions";
 import { cached, load, loadAll, need, resource, store, useAllLoaded, type Needed } from "./resources";
@@ -35,6 +36,7 @@ import { consentToken } from "../telemetry/client";
 import { forgetPendingOfferToSave, passwordAutofill } from "../site/passwordManager";
 import { notePreloadPagesTurned } from "../telemetry/preloadPagesCounts";
 import { trackAutofillToggleKept } from "../telemetry/track";
+import { noteDownloadFoldersFoundSeparate } from "../telemetry/downloadFolderCounts";
 import { askedValue, rememberAsked } from "./autofillAsked";
 
 export { passwordAutofill };
@@ -134,11 +136,23 @@ export async function setAutofillFor(profile: string, kind: Exclude<AutofillTogg
   noteAsked(profile, kind, on, now[kind]);
 }
 
-export const downloadFoldersDiffer = (profiles: string[]) =>
-  Promise.all(profiles.map((p) => getDownloadSettings(p).catch(() => null))).then((all) => new Set(all.flatMap((d) => (d ? [d.folder] : []))).size > 1);
+export async function downloadFoldersDiffer(profiles: string[]) {
+  await downloadSharingSettled();
+  const all = await Promise.all(profiles.map((p) => getDownloadSettings(p).catch(() => null)));
+  return new Set(all.flatMap((d) => (d ? [d.folder] : []))).size > 1;
+}
 
-export const setDownloadsFor = (patch: Partial<Pick<DownloadSettings, "folder" | "askWhereToSave">>, profiles: string[]) =>
-  Promise.all(profiles.map((p) => setDownloadSettings(patch, p).then((next) => store(downloadSettings, [p], next), orWarn(undefined))));
+export async function separateIfFoldersDiffer(profiles: string[], stillShown: () => boolean) {
+  const consent = consentToken();
+  if (!(await downloadFoldersDiffer(profiles)) || !stillShown()) return;
+  useBrowser.getState().updateSettings({ separateDownloadFolders: true });
+  noteDownloadFoldersFoundSeparate(consent);
+}
+
+export async function setDownloadsFor(patch: Partial<Pick<DownloadSettings, "folder" | "askWhereToSave">>, profiles: string[]) {
+  await downloadSharingSettled();
+  return Promise.all(profiles.map((p) => setDownloadSettings(patch, p).then((next) => store(downloadSettings, [p], next), orWarn(undefined))));
+}
 
 export function setUpdaterPrefs(patch: { automaticChecks?: boolean; automaticDownloads?: boolean; channel?: UpdateChannel }) {
   const state = cached(updater, []);

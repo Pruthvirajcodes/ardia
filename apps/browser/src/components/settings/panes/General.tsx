@@ -8,7 +8,7 @@ import { updateSettings } from "../../../state/settings/actions";
 import { currentEngineProfile } from "../../../state/browser/current";
 import { useProfiles, useSettings } from "../../../state/browser/hooks";
 import { Group, Row, SectionHeader } from "../Form";
-import { defaultBrowser, downloadFoldersDiffer, downloadSettings, loginItem, makeDefaultBrowser, setDownloadsFor } from "../../../state/settings/paneData";
+import { defaultBrowser, downloadSettings, loginItem, makeDefaultBrowser, separateIfFoldersDiffer, setDownloadsFor } from "../../../state/settings/paneData";
 import { useResource } from "../../../state/settings/resources";
 import { goToSettingsPane, openImport, SETTINGS_DETAIL, type SettingsPlace } from "../../../state/settings/settingsWindows";
 import { redoSetupFromSettings } from "../../../state/onboarding/redo";
@@ -155,7 +155,7 @@ function DownloadsSection() {
   useEffect(() => {
     if (separate || everyProfile.length < 2) return;
     let live = true;
-    void downloadFoldersDiffer(everyProfile).then((differ) => live && differ && updateSettings({ separateDownloadFolders: true }));
+    void separateIfFoldersDiffer(everyProfile, () => live);
     return () => {
       live = false;
     };

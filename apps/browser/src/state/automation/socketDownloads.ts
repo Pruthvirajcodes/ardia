@@ -2,6 +2,7 @@ import { engineProfile } from "../browser/model";
 import { cancelDownload, keepDownload, pauseDownload, resumeDownload, setDownloadSettings, type Download } from "../downloads/actions";
 import { downloadSession } from "../downloads/downloadsSlice";
 import { openDownload } from "../downloads/openDownload";
+import { downloadSharingSettled } from "../downloads/sharedSettings";
 import { awaitsKeep } from "../downloads/status";
 import { getDownloadSettings } from "../../platform/downloads";
 import { revealFile } from "../../platform/files";
@@ -87,13 +88,16 @@ function clear() {
 }
 
 async function settings(params: Record<string, unknown>) {
-  return getDownloadSettings(engineProfile(now(), profileArg(params.profile)));
+  const engine = engineProfile(now(), profileArg(params.profile));
+  await downloadSharingSettled();
+  return getDownloadSettings(engine);
 }
 
 async function setSettings(params: Record<string, unknown>, call: SocketCall) {
   if (params.folder === undefined && params.askWhereToSave === undefined) throw new OpError("bad_request", "downloads.setSettings needs folder or askWhereToSave.");
   if (params.folder !== undefined && !isAbsoluteFolder(params.folder as string)) throw new OpError("bad_request", "folder is an absolute path.");
   const engine = engineProfile(now(), profileArg(params.profile));
+  await downloadSharingSettled();
   const current = await getDownloadSettings(engine);
   if (current.managed) throw new OpError("refused", "A policy sets this profile's download settings.");
   call.stillServing();
