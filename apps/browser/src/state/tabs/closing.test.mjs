@@ -77,6 +77,17 @@ test("⌘W on a pinned tab in front switches to an awake regular tab, not one pu
   assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 1);
 });
 
+test("⌘W on a pinned row with only pinned rows left switches to an awake one, not one put to sleep", (t) => {
+  const { w, ids: [a, b, c] } = visitedInOrder(t, "a", "b", "c");
+  S().pinTabs([a, b, c], true, true);
+  S().activate(c);
+  noteDiscarded(b, "external");
+  S().closeTab(c);
+  assert.equal(activeTabId(S(), w), a);
+  assert.equal(isSleeping(b), true);
+  assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 0);
+});
+
 test("⌘W with only sleeping tabs left still switches to the one used last, and counts the wake while sharing is on", (t) => {
   for (const sharing of [true, false]) {
     const { w, ids: [a, b, c] } = visitedInOrder(t, "a", "b", "c");

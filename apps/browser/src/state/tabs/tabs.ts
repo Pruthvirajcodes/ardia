@@ -278,7 +278,8 @@ function lastLivePinnedTab(s: BrowserState, w: BrowserWindow, id: string, closin
     const tab = s.tabs[t];
     return !closing.has(t) && tab?.profileId === profileId && inPinnedContainer(s, t) && hasPage(tab) && !(skipTopApps && keptWithTopApp(s, t));
   });
-  return live.reduce<string | undefined>((best, t) => (!best || byRecentUse(s.tabs[t]!, s.tabs[best]!) < 0 ? t : best), undefined);
+  const awake = live.filter((t) => !isSleeping(t));
+  return (awake.length ? awake : live).reduce<string | undefined>((best, t) => (!best || byRecentUse(s.tabs[t]!, s.tabs[best]!) < 0 ? t : best), undefined);
 }
 
 export function withNewTab(s: BrowserState, windowId: string, o: NewTabOptions = {}): [BrowserState, string] {
