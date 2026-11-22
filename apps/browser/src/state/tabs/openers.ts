@@ -9,9 +9,7 @@ import { isSleeping } from "./sleepingTabs";
 
 const regular = (s: BrowserState, id: string) => !inPinnedContainer(s, id);
 
-export const discardedNow = (s: BrowserState, id: string) => isSleeping(holderOfPage(s.tabs[id]) ?? id);
-
-export const sleepsNow = (s: BrowserState, id: string) => isAsleep(s.tabs[id]) || discardedNow(s, id);
+export const sleepsNow = (s: BrowserState, id: string) => isAsleep(s.tabs[id]) || isSleeping(holderOfPage(s.tabs[id]) ?? id);
 
 export function insertionIndex(s: BrowserState, w: BrowserWindow, tab: Tab, background: boolean): number {
   const opener = tab.openerId ? s.tabs[tab.openerId] : undefined;
@@ -103,7 +101,8 @@ export function closeSuccessor(s: BrowserState, closed: string, order: string[],
   const at = order.indexOf(closed);
   const nearest = [...left.filter((id) => order.indexOf(id) > at), ...left.filter((id) => order.indexOf(id) < at).reverse()];
   const awake = nearest.filter((id) => !sleepsNow(s, id));
-  const pool = awake.length ? awake : nearest;
+  const open = nearest.filter((id) => !isAsleep(s.tabs[id]));
+  const pool = awake.length ? awake : open.length ? open : nearest;
   const seen = pool.filter((id) => !s.tabs[id]!.unseen);
   if (!seen.length) return pool[0];
   return seen.reduce((best, id) => (s.tabs[id]!.lastActiveAt > s.tabs[best]!.lastActiveAt ? id : best));

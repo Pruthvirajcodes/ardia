@@ -6,6 +6,7 @@ import { activated, apply, removeTabs, withNewTab } from "../tabs/tabs";
 import { groupLabel, withGroup } from "./tabGrouping";
 import type { BrowserWindow, ClosedGroup, ClosedTab, ClosedWindow, NestedGroupSnapshot, Tab, TabGroup } from "../browser/types";
 import { sleepsNow } from "../tabs/openers";
+import { isAsleep } from "../tabs/pageSession";
 
 export const MAX_CLOSED_TABS = 50;
 export const MAX_CLOSED_WINDOWS = 10;
@@ -69,8 +70,9 @@ function showAboveGroup(before: BrowserState, s: BrowserState, g: TabGroup): Bro
   if (!w || !was || !g.tabIds.includes(was)) return s;
   const order = viewTabIds(before, g.windowId, g.profileId).filter((id) => !inPinnedContainer(before, id));
   const at = order.indexOf(g.tabIds[0]!);
-  const stays = (id: string) => !!s.tabs[id] && !g.tabIds.includes(id) && !sleepsNow(s, id);
-  const pick = order.slice(0, at).reverse().find(stays) ?? order.slice(at).find(stays);
+  const stays = (id: string) => !!s.tabs[id] && !g.tabIds.includes(id) && !isAsleep(s.tabs[id]);
+  const nearest = [...order.slice(0, at).reverse(), ...order.slice(at)].filter(stays);
+  const pick = nearest.find((id) => !sleepsNow(s, id)) ?? nearest[0];
   if (!pick) return s;
   if (w.profileId === g.profileId) return apply(s, activated(s, pick));
   return { ...s, windows: { ...s.windows, [w.id]: { ...w, activeTabIds: { ...w.activeTabIds, [g.profileId]: pick } } } };

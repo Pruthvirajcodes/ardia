@@ -27,7 +27,7 @@ import { focusedWindowOf } from "../windows/ui";
 import { PLATFORM_TERMS } from "../../lib/platformTerms";
 import { splitOf } from "../splits/splits";
 import { closeKind } from "../tabs/tabs";
-import { discardedNow } from "../tabs/openers";
+import { isSleeping } from "../tabs/sleepingTabs";
 import { noteSplit } from "../telemetry/usage";
 import { consentToken, stillValid } from "../telemetry/client";
 import { isPeekTab } from "../peek/peek";
@@ -81,7 +81,7 @@ export async function closeTab(tabId: string, mayWrite?: () => boolean) {
   const front = activeTabId(now, w.id);
   commit(() => store().closeTab(tabId));
   const next = activeTabId(store(), w.id);
-  if (front === tabId && next && next !== front && discardedNow(store(), next)) noteCloseWokeSleepingTab(consent);
+  if (front === tabId && next && next !== front && isSleeping(next)) noteCloseWokeSleepingTab(consent);
 }
 
 export async function closeGroup(groupId: string, mayWrite?: () => boolean) {

@@ -99,6 +99,57 @@ test("closing the group in front shows the awake tab above it, not one put to sl
   assert.equal(isSleeping(b), true);
 });
 
+for (const how of ["⌘W", "Close Group"]) {
+  test(`${how} with only slept tabs open never reopens the pinned row just closed`, async (t) => {
+    const { w, ids: [a, c, p] } = visitedInOrder(t, "a", "c", "p");
+    S().pinTabs([p], true, true);
+    const g = how === "Close Group" ? S().groupTabs([c], { pinned: false }) : undefined;
+    S().activate(p);
+    t.mock.timers.tick(100);
+    await closeTab(p);
+    assert.equal(activeTabId(S(), w), c);
+    noteDiscarded(a, "external");
+    t.mock.timers.tick(100);
+    if (g) S().closeGroup(g);
+    else await closeTab(c);
+    assert.equal(activeTabId(S(), w), a);
+    assert.equal(S().tabs[p].page.kind, "asleep");
+  });
+}
+
+test("closing the group in front still shows the tab just above it when every tab left sleeps", (t) => {
+  const { w, ids: [a, b, c, d] } = visitedInOrder(t, "a", "b", "c", "d");
+  const g = S().groupTabs([c], { pinned: false });
+  S().activate(c);
+  for (const id of [a, b, d]) noteDiscarded(id, "proactive");
+  S().closeGroup(g);
+  assert.equal(activeTabId(S(), w), b);
+});
+
+test("closing the group in front shows a slept regular tab above it before an awake pinned row", (t) => {
+  const { w, ids: [p, home, c] } = visitedInOrder(t, "p", "home", "c");
+  S().pinTabs([p], true, true);
+  const g = S().groupTabs([c], { pinned: false });
+  S().activate(c);
+  noteDiscarded(home, "external");
+  S().closeGroup(g);
+  assert.equal(activeTabId(S(), w), home);
+});
+
+test("switching to a copy of a slept page in another window wakes nothing, so it isn't counted", async (t) => {
+  const { ids: [a, b] } = visitedInOrder(t, "a", "b");
+  S().updateSettings({ shareTabsAcrossWindows: true });
+  t.after(() => S().updateSettings({ shareTabsAcrossWindows: false }));
+  t.mock.timers.tick(100);
+  const second = S().createWindow({ url: "https://d.com/" });
+  const d = activeTabId(S(), second);
+  for (const id of [a, b]) noteDiscarded(id, "external");
+  takeTabSleepCounts();
+  await closeTab(d);
+  assert.equal(S().tabs[activeTabId(S(), second)].page.kind, "frozen");
+  assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 0);
+});
+
 test("a tab showing another window's page sleeps when that page was put to sleep", (t) => {
   useLifecycle.setState({ discarded: {} });
   t.after(() => useLifecycle.setState({ discarded: {} }));
