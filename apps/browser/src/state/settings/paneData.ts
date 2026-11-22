@@ -18,6 +18,7 @@ import { getAutofillSettings, listAddresses, listCards, setAutofillSettings, typ
 import { getContentBlocker } from "../../platform/contentBlocker";
 import { getDownloadSettings, setDownloadSettings, type DownloadSettings } from "../../platform/downloads";
 import { inDownloadTurn } from "../downloads/downloadTurns";
+import { readExistingSource } from "../downloads/sharedSettings";
 import { engineProfiles } from "../profiles/engineProfiles";
 import { getExternalAppAllowances, getPreloadPages, getSiteSettingsOrigins, getZoomLevels, setPreloadPages } from "../../platform/siteSettings";
 import { getPasswordAutofill, setPasswordAutofill } from "../../platform/passwords";
@@ -165,10 +166,10 @@ export const setDownloadsForEveryProfile = (patch: DownloadsPatch) => inDownload
 
 const copyDefaultToEveryProfile = async () => {
   if (currentSettings().separateDownloadFolders) return;
-  const from = defaultProfile();
-  const shared = await getDownloadSettings(from).catch(orWarn(null));
-  if (!shared?.folder || shared.managed || currentSettings().separateDownloadFolders) return;
-  await writeDownloads({ folder: shared.folder, askWhereToSave: shared.askWhereToSave }, engineProfiles(useBrowser.getState()).filter((p) => p !== from));
+  const read = await readExistingSource(useBrowser.getState, defaultProfile).catch(orWarn(null));
+  if (!read?.settings.folder || read.settings.managed || currentSettings().separateDownloadFolders) return;
+  const { folder, askWhereToSave } = read.settings;
+  await writeDownloads({ folder, askWhereToSave }, engineProfiles(useBrowser.getState()).filter((p) => p !== read.from));
 };
 
 export function setSeparateDownloadFolders(on: boolean) {

@@ -53,7 +53,7 @@ const { takeDownloadFolderCounts } = await import("../telemetry/downloadFolderCo
 const { useBrowser } = await import("../browser/store.ts");
 const { engineProfile } = await import("../browser/model.ts");
 const { engineProfiles } = await import("../profiles/engineProfiles.ts");
-const { setDownloadsFor, downloadSettings, separateIfFoldersDiffer } = await import("../settings/paneData.ts");
+const { setDownloadsFor, setSeparateDownloadFolders, downloadSettings, separateIfFoldersDiffer } = await import("../settings/paneData.ts");
 const { addLinkedProfile } = await import("../sync/profileLinks.ts");
 const { patchImport } = await import("../import/flow.ts");
 const { runImport } = await import("../import/runImport.ts");
@@ -69,6 +69,19 @@ const shareTwo = async () => {
   const work = createProfile({ name: "Work" });
   await settled();
   return work;
+};
+const threeApart = async () => {
+  const made = ["Work", "Side"].map((name) => createProfile({ name }));
+  await settled();
+  S().updateSettings({ separateDownloadFolders: true });
+  for (const id of made) await setDownloadsFor({ folder: `/Users/someone/${S().profiles[id].name}`, askWhereToSave: false }, [engineOf(id)]);
+  writes = [];
+  return made;
+};
+const holdRead = (profile) => {
+  const held = Promise.withResolvers();
+  loads.set(profile, held.promise);
+  return held;
 };
 const settled = () => sleep(LOAD_MS * 4);
 const savesTo = async (id) => {
@@ -264,46 +277,51 @@ test("deleting the default profile before the copy reads it copies from the prof
 
 test("deleting the default profile while the copy reads it copies from the profile that became the default", async () => {
   await shareTwo();
-  loads.set("", sleep(LOAD_MS));
+  const held = holdRead("");
   const side = createProfile({ name: "Side" });
   await sleep(1);
   S().deleteProfile("default");
   engine.delete("");
+  held.resolve();
   assert.deepEqual(await savesTo(side), SHARED);
 });
 
 test("a deleted source that no longer answers isn't a failed copy", async () => {
   await shareTwo();
-  loads.set("", sleep(LOAD_MS).then(() => Promise.reject(Object.assign(new Error("profile not loaded"), { code: "ERR_ENGINE" }))));
+  const held = holdRead("");
   const side = createProfile({ name: "Side" });
   await sleep(1);
   S().deleteProfile("default");
+  held.reject(Object.assign(new Error("profile not loaded"), { code: "ERR_ENGINE" }));
   assert.deepEqual(await savesTo(side), SHARED);
 });
 
 test("deleting the only other profile while the copy reads it keeps what was read", async () => {
-  loads.set("", sleep(LOAD_MS));
+  const held = holdRead("");
   const work = createProfile({ name: "Work" });
   await sleep(1);
   S().deleteProfile("default");
+  held.resolve();
   assert.deepEqual(await savesTo(work), SHARED);
 });
 
 test("what was read isn't applied once the switch is on", async () => {
-  loads.set("", sleep(LOAD_MS));
+  const held = holdRead("");
   const work = createProfile({ name: "Work" });
   await sleep(1);
   S().deleteProfile("default");
   S().updateSettings({ separateDownloadFolders: true });
+  held.resolve();
   assert.deepEqual(await savesTo(work), UNTOUCHED);
 });
 
 test("what was read isn't applied to a profile deleted meanwhile", async () => {
-  loads.set("", sleep(LOAD_MS));
+  const held = holdRead("");
   const work = createProfile({ name: "Work" });
   const workEngine = engineOf(work);
   await sleep(1);
   S().deleteProfile(work);
+  held.resolve();
   await settled();
   assert.equal(loads.has(workEngine), false);
 });
@@ -340,12 +358,13 @@ test("automation doesn't write to a profile deleted while it waited", async () =
 test("automation doesn't write to a profile deleted while its settings were read", async () => {
   const work = await shareTwo();
   const workEngine = engineOf(work);
-  loads.set(workEngine, sleep(LOAD_MS));
+  const held = holdRead(workEngine);
   writes = [];
   const write = automation("downloads.setSettings").run({ profile: work, folder: "/Users/someone/Scripted" }, socketCall);
   const refused = assert.rejects(write, /There's no profile/);
   await sleep(1);
   S().deleteProfile(work);
+  held.resolve();
   await refused;
   assert.deepEqual(writes, []);
 });
@@ -366,4 +385,70 @@ test("General doesn't load a profile deleted while it waited", async () => {
   S().deleteProfile(work);
   await check;
   assert.equal(loads.has(workEngine), false);
+});
+
+test("turning the switch off while the default profile is deleted mid-read copies the new default's folder", async () => {
+  const [work, side] = await threeApart();
+  const held = holdRead("");
+  setSeparateDownloadFolders(false);
+  await sleep(1);
+  S().deleteProfile("default");
+  const replaced = { folder: "/Users/someone/Work", askWhereToSave: false };
+  held.resolve();
+  assert.deepEqual(await savesTo(work), replaced);
+  assert.deepEqual(await savesTo(side), replaced);
+  assert.deepEqual(writes, [engineOf(side)]);
+});
+
+test("turning the switch off still copies when the deleted default stops answering", async () => {
+  const [work, side] = await threeApart();
+  const held = holdRead("");
+  setSeparateDownloadFolders(false);
+  await sleep(1);
+  S().deleteProfile("default");
+  held.reject(Object.assign(new Error("profile not loaded"), { code: "ERR_ENGINE" }));
+  assert.deepEqual(await savesTo(side), { folder: "/Users/someone/Work", askWhereToSave: false });
+  assert.deepEqual(await savesTo(work), { folder: "/Users/someone/Work", askWhereToSave: false });
+});
+
+test("turning the switch off follows the default through a second deletion", async () => {
+  const [work, side] = await threeApart();
+  const workEngine = engineOf(work);
+  const firstRead = holdRead("");
+  const secondRead = holdRead(workEngine);
+  setSeparateDownloadFolders(false);
+  await sleep(1);
+  S().deleteProfile("default");
+  firstRead.resolve();
+  await sleep(1);
+  S().deleteProfile(work);
+  secondRead.resolve();
+  assert.deepEqual(await savesTo(side), { folder: "/Users/someone/Side", askWhereToSave: false });
+  assert.deepEqual(writes, []);
+});
+
+test("turning the switch off uses what it read when no default profile is left to read", async () => {
+  const [work, side] = await threeApart();
+  const held = holdRead("");
+  setSeparateDownloadFolders(false);
+  await sleep(1);
+  useBrowser.setState((state) => {
+    const { default: _, ...profiles } = state.profiles;
+    return { profiles, profileOrder: [work, side] };
+  });
+  held.resolve();
+  assert.deepEqual(await savesTo(work), SHARED);
+  assert.deepEqual(await savesTo(side), SHARED);
+});
+
+test("turning the switch off and on again during a deletion writes nothing", async () => {
+  await threeApart();
+  const held = holdRead("");
+  setSeparateDownloadFolders(false);
+  await sleep(1);
+  S().deleteProfile("default");
+  setSeparateDownloadFolders(true);
+  held.resolve();
+  await settled();
+  assert.deepEqual(writes, []);
 });
