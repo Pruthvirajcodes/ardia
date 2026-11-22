@@ -2,33 +2,50 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { chooseTextFragment, withTextFragment, type TextFragment } from "./textFragment.ts";
 
-const squeeze = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase();
+const squeeze = (text: string) => text.replace(/­/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+const asSearched = (text: string) =>
+  text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .normalize("NFC")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"');
 
 function highlighted(link: string, pageText: string): { from: number; text: string } | null {
-  const lines = pageText.split(/[\n\t]+/).map(squeeze).filter(Boolean);
+  const lines = pageText.split(/[\n\t]+/).map(squeeze).filter(Boolean).map(asSearched);
   const page = lines.join(" ");
-  const ends: number[] = [];
-  lines.reduce((at, line) => (ends.push(at + line.length), at + line.length + 1), 0);
+  const breaks = new Set<number>();
+  lines.reduce((at, line) => (breaks.add(at + line.length), at + line.length + 1), 0);
   const wordy = (i: number) => /[\p{L}\p{N}_]/u.test(page[i] ?? "");
   const dense = (i: number) => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(page[i] ?? "");
-  const edge = (i: number) => !wordy(i - 1) || !wordy(i) || dense(i - 1) || dense(i);
-  const matches = (term: string, i: number) => page.startsWith(term, i) && edge(i) && edge(i + term.length) && !ends.some((end) => end > i && end < i + term.length);
+  const joins = (i: number) => /[.':]/.test(page[i] ?? "") && wordy(i - 1) && wordy(i + 1);
+  const edge = (i: number) => dense(i - 1) || dense(i) || !((wordy(i - 1) && wordy(i)) || joins(i - 1) || joins(i));
+  const matches = (term: string, i: number, startsWord: boolean, endsWord: boolean) => {
+    if (!page.startsWith(term, i) || (startsWord && !edge(i)) || (endsWord && !edge(i + term.length))) return false;
+    for (let k = i + 1; k < i + term.length; k++) if (breaks.has(k)) return false;
+    return true;
+  };
   const skipSpace = (i: number) => (page[i] === " " ? i + 1 : i);
   const terms = link.split(":~:text=")[1]!.split(",");
-  const prefix = terms[0]!.endsWith("-") ? squeeze(decodeURIComponent(terms.shift()!.slice(0, -1))) : "";
-  const suffix = terms.at(-1)!.startsWith("-") ? squeeze(decodeURIComponent(terms.pop()!.slice(1))) : "";
-  const [start, end] = terms.map((term) => squeeze(decodeURIComponent(term)));
-  const followed = (to: number) => !suffix || matches(suffix, skipSpace(to));
+  const read = (term: string) => asSearched(squeeze(decodeURIComponent(term)));
+  const prefix = terms[0]!.endsWith("-") ? read(terms.shift()!.slice(0, -1)) : "";
+  const suffix = terms.at(-1)!.startsWith("-") ? read(terms.pop()!.slice(1)) : "";
+  const [start, end] = terms.map(read);
+  const followed = (to: number) => !suffix || matches(suffix, skipSpace(to), false, true);
   for (let i = 0; i < page.length; i++) {
-    if (prefix && !matches(prefix, i)) continue;
+    if (prefix && !matches(prefix, i, true, false)) continue;
     const from = prefix ? skipSpace(i + prefix.length) : i;
-    if (!matches(start!, from)) continue;
+    if (!matches(start!, from, !prefix, !!end || !suffix)) continue;
     if (!end) {
       if (followed(from + start!.length)) return { from, text: page.slice(from, from + start!.length) };
       continue;
     }
-    for (let j = from + start!.length; j < page.length; j++) {
-      if (matches(end, j) && followed(j + end.length)) return { from, text: page.slice(from, j + end.length) };
+    let j = from + start!.length;
+    while (j < page.length) {
+      if (!matches(end, j, true, !suffix)) j++;
+      else if (followed(j + end.length)) return { from, text: page.slice(from, j + end.length) };
+      else j += end.length;
     }
     return null;
   }
@@ -40,7 +57,8 @@ type Case = { head?: string; selected: string; tail?: string; before?: string; a
 function choose({ head = "", selected, tail = "", before = "", after = "" }: Case) {
   const pageText = head + selected + tail;
   const fragment = chooseTextFragment({ selected, before, after, pageText });
-  return { pageText, from: squeeze(head).length + (squeeze(head) ? 1 : 0), fragment };
+  const above = asSearched(squeeze(head));
+  return { pageText, from: above.length + (above && /\s$/.test(head) ? 1 : 0), fragment };
 }
 
 function assertHighlights(c: Case): TextFragment {
@@ -48,7 +66,7 @@ function assertHighlights(c: Case): TextFragment {
   assert.ok(fragment, "a link is made");
   const link = withTextFragment("https://example.com/page", fragment);
   const shown = highlighted(link, pageText);
-  assert.equal(shown?.text, squeeze(c.selected), link);
+  assert.equal(shown?.text, asSearched(squeeze(c.selected)), link);
   assert.equal(shown?.from, from, `${link} highlights another occurrence`);
   return fragment;
 }
@@ -89,7 +107,7 @@ test("the second of two identical phrases is picked by the rest of its line", ()
 });
 
 test("a word inside a longer word earlier on the page isn't taken for the match", () => {
-  assert.deepEqual(assertHighlights({ head: "The category list.\nA ", selected: "cat", tail: " sleeps.", before: "A ", after: " sleeps." }), { start: "cat" });
+  assertHighlights({ head: "The category list.\nA ", selected: "cat", tail: " sleeps.", before: "A ", after: " sleeps." });
 });
 
 test("matching ignores case and accents, as browsers do", () => {
@@ -137,4 +155,46 @@ test("generated pages: a link always highlights exactly the selection, or isn't 
     made++;
   }
   assert.ok(made > runs * 0.9, `${made} of ${runs} selections got a link`);
+});
+
+for (const [what, c] of Object.entries<Case>({
+  "a prefix that touches the start inside an earlier word": { head: "Take a nap.\nA catnap is short.\nA cat ", selected: "nap", tail: " is great.", before: "A cat ", after: " is great." },
+  "a suffix that touches the start inside an earlier word": { head: "See cat here.\nSee catfish there.\nWe see ", selected: "cat", tail: " fish there.", before: "We see ", after: " fish there." },
+  "hot dog under hotdog": { head: "dog\nhotdog stall\nhot ", selected: "dog", tail: " stand", before: "hot ", after: " stand" },
+  "a straight quote above a curly one": { head: "Don't stop believing today.\n", selected: "Don’t stop believing", tail: " ever.", after: " ever." },
+  "a word above the same word with soft hyphens": { head: "The internet is big.\nAn ", selected: "in­ter­net", tail: " is wide.", before: "An ", after: " is wide." },
+  "a combining accent below the plain word": { head: "Cafe menu today\n", selected: "Café menu", tail: " tonight", after: " tonight" },
+  "voiced kana below the unvoiced word": { head: "かき\n", selected: "がき", tail: "\n次" },
+  "a whole line that two lines above spell out too": { head: "Hello\nworld\n", selected: "Hello world", tail: "\nBye" },
+  "Latin inside Japanese": { head: "私は", selected: "Ardia", tail: "を使っています。", before: "私は", after: "を使っています。" },
+})) {
+  test(`Chromium's matching: ${what}`, () => void assertHighlights(c));
+}
+
+test("a selection inside a dotted word widens to the word, which is what a browser can match", () => {
+  const pageText = "Visit example.com for info.\nFor example, see below.";
+  const fragment = chooseTextFragment({ selected: "example", before: "Visit ", after: ".com for info.", pageText });
+  assert.equal(highlighted(withTextFragment("https://example.com/", fragment!), pageText)?.text, "example.com");
+});
+
+test("a range whose last words also end an earlier line is exact, or isn't made", () => {
+  const c = { head: "", selected: "Start of section\na a a a x\na a a a", tail: " b", after: " b" };
+  if (choose(c).fragment) assertHighlights(c);
+});
+
+test("a selection whose middle isn't in the page's text gets no link rather than a shorter one", () => {
+  assert.equal(chooseTextFragment({ selected: "Title\nFirst End\nEnd", before: "", after: "", pageText: "Title\nEdit\nFirst End\nEnd" }), null);
+});
+
+test("a word no prefix or suffix can tell from one inside an earlier word gets no link", () => {
+  assert.equal(choose({ head: "See cat here.\nSee catfish there.\nSee ", selected: "cat", tail: " fish there.", before: "See ", after: " fish there." }).fragment, null);
+});
+
+test("repetitive pages stay linear", () => {
+  const word = "x ".repeat(200_000);
+  const lines = "a x\n".repeat(100_000);
+  const started = performance.now();
+  chooseTextFragment({ selected: "x", before: word.slice(-400), after: " end", pageText: `${word}x end` });
+  chooseTextFragment({ selected: "a\nmissing", before: "", after: "", pageText: lines });
+  assert.ok(performance.now() - started < 1000);
 });

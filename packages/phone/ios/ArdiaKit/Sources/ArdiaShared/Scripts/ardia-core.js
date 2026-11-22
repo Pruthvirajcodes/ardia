@@ -3516,6 +3516,7 @@ __define("packages/core/src/textFragment.ts", function (exports, __require) {
 
                                          
                                           
+                                         
 
 const MAX_EXACT_WORDS = 10;
 const MAX_EXACT_CHARS = 300;
@@ -3523,19 +3524,89 @@ const RANGE_WORDS = 3;
 const MAX_TERM_WORDS = 12;
 const MAX_CONTEXT_WORDS = 5;
 const CONTEXT_CHARS = 200;
+const CHUNK_CHARS = 32_768;
 
 const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u;
 const WORD_CHAR = /[\p{L}\p{N}\p{M}_]/u;
-const WORD_END = /[\p{L}\p{N}_]+$/u;
-const WORD_START = /^[\p{L}\p{N}_]+/u;
-const TERM_WORD = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]|[^\s\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]+/gu;
+const JOINER = /[.'’:,;·״‧]/;
+const TERM_WORD = /[^\s。、，．！？：；「」『』（）]+[。、，．！？：；「」『』（）]*|[。、，．！？：；「」『』（）]+/g;
+
+function mapChunks(text        , map                           )         {
+  if (text.length <= CHUNK_CHARS) return map(text);
+  const out           = [];
+  for (let from = 0; from < text.length; ) {
+    let to = from + CHUNK_CHARS;
+    while (to < text.length && /[\s\ud800-\udbff]/.test(text[to - 1] )) to++;
+    out.push(map(text.slice(from, to)));
+    from = to;
+  }
+  return out.join("");
+}
+
+const collapsed = (raw        ) =>
+  mapChunks(raw, (chunk) =>
+    chunk
+      .replace(/­+/g, "")
+      .replace(/[\t\r\f\v  -  　]+/g, (space) => (space.includes("\t") ? "\n" : " "))
+      .replace(/ {2,}/g, " ")
+      .replace(/ ?\n[\n ]*/g, "\n"),
+  ).trim();
+
+function looselyFolded(text        )         {
+  return mapChunks(text, (chunk) => {
+    const lower = chunk.toLowerCase().replace(/\n/g, " ");
+    if (!/[^\x00-\x7f]/.test(lower)) return lower;
+    return lower
+      .normalize("NFKD")
+      .toLowerCase()
+      .replace(/[\p{M}\p{Cf}]+/gu, "")
+      .replace(/[‘’׳]/g, "'")
+      .replace(/[“”״]/g, '"')
+      .replace(/ß/g, "ss");
+  });
+}
+
+function pageOf(raw        )       {
+  const text = collapsed(raw);
+  return { text, key: looselyFolded(text) };
+}
+
+const isWordChar = (char                    ) => !!char && WORD_CHAR.test(char) && !UNSPACED.test(char);
+
+function charBefore(text        , at        )                     {
+  return /[\udc00-\udfff]/.test(text[at - 1] ?? "") ? text.slice(at - 2, at) : text[at - 1];
+}
+
+function charAfter(text        , at        )                     {
+  return /[\ud800-\udbff]/.test(text[at] ?? "") ? text.slice(at, at + 2) : text[at];
+}
+
+function isWordEdge(text        , at        )          {
+  const left = charBefore(text, at);
+  const right = charAfter(text, at);
+  if (!left || !right) return true;
+  if (isWordChar(left)) return !isWordChar(right) && !(JOINER.test(right) && isWordChar(charAfter(text, at + right.length)));
+  return !(isWordChar(right) && JOINER.test(left) && isWordChar(charBefore(text, at - left.length)));
+}
+
+function wordRunBefore(text        )         {
+  let from = text.length;
+  for (let char = charBefore(text, from); char && (isWordChar(char) || JOINER.test(char)); char = charBefore(text, from)) from -= char.length;
+  while (from < text.length && JOINER.test(text[from] )) from++;
+  return text.slice(from);
+}
+
+function wordRunAfter(text        )         {
+  let to = 0;
+  for (let char = charAfter(text, to); char && (isWordChar(char) || JOINER.test(char)); char = charAfter(text, to)) to += char.length;
+  while (to > 0 && JOINER.test(text[to - 1] )) to--;
+  return text.slice(0, to);
+}
 
 function toWordBoundaries(context                  )                   {
   const { selected, before, after } = context;
-  const extendsBack = WORD_START.test(selected) && !UNSPACED.test(selected[0] );
-  const extendsOn = WORD_END.test(selected) && !UNSPACED.test(selected[selected.length - 1] );
-  const head = extendsBack ? (WORD_END.exec(before)?.[0] ?? "") : "";
-  const tail = extendsOn ? (WORD_START.exec(after)?.[0] ?? "") : "";
+  const head = isWordChar(charAfter(selected, 0)) ? wordRunBefore(before.slice(-CONTEXT_CHARS)) : "";
+  const tail = isWordChar(charBefore(selected, selected.length)) ? wordRunAfter(after.slice(0, CONTEXT_CHARS)) : "";
   return {
     ...context,
     selected: head + selected + tail,
@@ -3544,98 +3615,50 @@ function toWordBoundaries(context                  )                   {
   };
 }
 
-const withoutAccent = (char        ) => {
-  const base = char.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-  return base.length === char.length ? base : char;
-};
-
-const folded = (text        ) => text.replace(/[A-Z]+/g, (upper) => upper.toLowerCase()).replace(/[^\x00-\x7f]/g, withoutAccent);
-
-function pageOf(raw        )       {
-  const text = raw.replace(/\s+/g, (space) => (/[\n\t]/.test(space) ? "\n" : " ")).trim();
-  return { text, key: folded(text) };
-}
-
-function isBoundary(key        , at        )          {
-  const left = key[at - 1] ?? "";
-  const right = key[at] ?? "";
-  return !WORD_CHAR.test(left) || !WORD_CHAR.test(right) || UNSPACED.test(left) || UNSPACED.test(right);
-}
-
-const matchesAt = (key        , term        , at        ) => key.startsWith(term, at) && isBoundary(key, at) && isBoundary(key, at + term.length);
-
-function firstMatch(key        , term        , from        , accept                          = () => true)         {
-  for (let at = key.indexOf(term, from); at !== -1; at = key.indexOf(term, at + 1)) {
-    if (isBoundary(key, at) && isBoundary(key, at + term.length) && accept(at)) return at;
+function sharedBefore(text        , at        , context        )         {
+  let shared = 0;
+  for (let i = at - 1; i >= 0 && shared < context.length; i--) {
+    const char = text[i] ;
+    if (char === " " || char === "\n") continue;
+    if (char !== context[context.length - 1 - shared]) break;
+    shared++;
   }
-  return -1;
+  return shared;
 }
 
-const pastSpace = (key        , at        ) => (key[at] === " " || key[at] === "\n" ? at + 1 : at);
-
-function firstStart(key        , start        , prefix        , accept                          = () => true)         {
-  if (!prefix) return firstMatch(key, start, 0, accept);
-  let found = -1;
-  firstMatch(key, prefix, 0, (at) => {
-    const next = pastSpace(key, at + prefix.length);
-    if (!matchesAt(key, start, next) || !accept(next)) return false;
-    found = next;
-    return true;
-  });
-  return found;
-}
-
-const followedBy = (key        , at        , suffix        ) => !suffix || matchesAt(key, suffix, pastSpace(key, at));
-
-function occurrencesOfSelection(key        , selected      )         {
-  const flat = key.replace(/\n/g, " ");
-  const whole = selected.key.replace(/\n/g, " ");
-  const spans         = [];
-  firstMatch(flat, whole, 0, (from) => {
-    spans.push({ from, to: from + whole.length });
-    return false;
-  });
-  const lines = selected.key.split("\n");
-  if (spans.length || lines.length < 2) return spans;
-  const first = lines[0] ;
-  const last = lines[lines.length - 1] ;
-  firstMatch(key, first, 0, (from) => {
-    const end = firstMatch(key, last, from + first.length);
-    if (end !== -1 && end + last.length - from <= 2 * whole.length) spans.push({ from, to: end + last.length });
-    return false;
-  });
-  return spans;
-}
-
-const unspaced = (text        ) => text.replace(/\s+/g, "");
-
-function sharedLength(a        , b        )         {
-  let length = 0;
-  while (length < a.length && length < b.length && a[length] === b[length]) length++;
-  return length;
-}
-
-const reversed = (text        ) => text.split("").reverse().join("");
-
-function selectionSpan(key        , selected      , before        , after        )              {
-  const spans = occurrencesOfSelection(key, selected);
-  if (spans.length < 2) return spans[0] ?? null;
-  const left = reversed(unspaced(folded(before.slice(-CONTEXT_CHARS))));
-  const right = unspaced(folded(after.slice(0, CONTEXT_CHARS)));
-  let best              = null;
-  let bestScore = -1;
-  for (const span of spans) {
-    const startsLine = span.from === 0 || key[span.from - 1] === "\n";
-    const endsLine = span.to === key.length || key[span.to] === "\n";
-    const score =
-      (left ? sharedLength(left, reversed(unspaced(key.slice(Math.max(0, span.from - 2 * CONTEXT_CHARS), span.from)))) : Number(startsLine)) +
-      (right ? sharedLength(right, unspaced(key.slice(span.to, span.to + 2 * CONTEXT_CHARS))) : Number(endsLine));
-    if (score === bestScore) best = null;
-    if (score <= bestScore) continue;
-    best = span;
-    bestScore = score;
+function sharedAfter(text        , at        , context        )         {
+  let shared = 0;
+  for (let i = at; i < text.length && shared < context.length; i++) {
+    const char = text[i] ;
+    if (char === " " || char === "\n") continue;
+    if (char !== context[shared]) break;
+    shared++;
   }
-  return best;
+  return shared;
+}
+
+function selectionSpan(text        , { selected, before, after }                  )              {
+  const wanted = collapsed(selected);
+  if (!wanted) return null;
+  const left = collapsed(before.slice(-CONTEXT_CHARS)).replace(/\s/g, "");
+  const right = collapsed(after.slice(0, CONTEXT_CHARS)).replace(/\s/g, "");
+  const bestIn = (haystack        , needle        )                          => {
+    let best                         ;
+    let bestScore = -1;
+    for (let from = haystack.indexOf(needle); from !== -1; from = haystack.indexOf(needle, from + 1)) {
+      const to = from + needle.length;
+      const score =
+        (left ? sharedBefore(text, from, left) : Number(from === 0 || text[from - 1] === "\n")) +
+        (right ? sharedAfter(text, to, right) : Number(to === text.length || text[to] === "\n"));
+      if (score < bestScore || !isWordEdge(text, from) || !isWordEdge(text, to)) continue;
+      best = score === bestScore ? null : { from, to };
+      bestScore = score;
+    }
+    return best;
+  };
+  const found = bestIn(text, wanted);
+  if (found !== undefined) return found;
+  return bestIn(text.replace(/\n/g, " "), wanted.replace(/\n/g, " ")) ?? null;
 }
 
 function wordsIn({ text }      , { from, to }      )         {
@@ -3650,56 +3673,66 @@ function prefixesFor(page      , from        )         {
 }
 
 function suffixesFor(page      , to        )         {
-  const from = pastSpace(page.key, to);
+  const from = /\s/.test(page.text[to] ?? "") ? to + 1 : to;
   const lineEnd = page.text.indexOf("\n", from);
   const line = { from, to: lineEnd === -1 ? page.text.length : lineEnd };
   return wordsIn(page, line).slice(0, MAX_CONTEXT_WORDS).map((word) => ({ from, to: word.to }));
 }
 
-const keyOf = (page      , span                  ) => (span ? page.key.slice(span.from, span.to) : "");
+const keyOf = (page      , span                  ) => (span ? looselyFolded(page.text.slice(span.from, span.to)) : "");
 const textOf = (page      , span      ) => page.text.slice(span.from, span.to);
 
-function exactFragment(page      , target      )                      {
+function nothingMatchesEarlier(key        , at        , prefix        , start        , suffix        )          {
+  for (const beforeStart of prefix ? ["", " "] : [""]) {
+    for (const afterStart of suffix ? ["", " "] : [""]) {
+      const found = key.indexOf(prefix + beforeStart + start + afterStart + suffix);
+      if (found !== -1 && found + prefix.length + beforeStart.length < at) return false;
+    }
+  }
+  return true;
+}
+
+function exactFragment(page      , target        )                      {
   const prefixes = prefixesFor(page, target.from);
   const suffixes = suffixesFor(page, target.to);
   const start = keyOf(page, target);
-  for (let n = 0; n <= MAX_CONTEXT_WORDS; n++) {
-    const prefix = prefixes[n - 1];
-    const suffix = suffixes[n - 1];
-    for (const [before, after] of [[prefix, undefined], [undefined, suffix], [prefix, suffix]]) {
-      const found = firstStart(page.key, start, keyOf(page, before), (at) => followedBy(page.key, at + start.length, keyOf(page, after)));
-      if (found === target.from)
-        return { ...(before && { prefix: textOf(page, before) }), start: textOf(page, target), ...(after && { suffix: textOf(page, after) }) };
-    }
+  const contexts                                         = [[undefined, undefined]];
+  for (let n = 0; n < MAX_CONTEXT_WORDS; n++) {
+    if (prefixes[n]) contexts.push([prefixes[n], undefined]);
+    if (suffixes[n]) contexts.push([undefined, suffixes[n]]);
+    if (prefixes[n] && suffixes[n]) contexts.push([prefixes[n], suffixes[n]]);
+  }
+  for (const [prefix, suffix] of contexts) {
+    if (nothingMatchesEarlier(page.key, target.keyFrom, keyOf(page, prefix), start, keyOf(page, suffix)))
+      return { ...(prefix && { prefix: textOf(page, prefix) }), start: textOf(page, target), ...(suffix && { suffix: textOf(page, suffix) }) };
   }
   return null;
 }
 
-function rangeStart(page      , target      , words        )                                       {
+function rangeStart(page      , target        , words        )                                       {
   const most = Math.min(MAX_TERM_WORDS, words.length);
   for (const prefix of [undefined, ...prefixesFor(page, target.from)]) {
     for (let n = Math.min(RANGE_WORDS, most); n >= 1 && n <= most; n++) {
       const term = { from: target.from, to: words[n - 1] .to };
-      if (firstStart(page.key, keyOf(page, term), keyOf(page, prefix)) === target.from) return { term, prefix };
+      if (nothingMatchesEarlier(page.key, target.keyFrom, keyOf(page, prefix), keyOf(page, term), "")) return { term, prefix };
     }
   }
   return null;
 }
 
-function rangeEnd(page      , target      , searchFrom        , words        )                                       {
+function rangeEnd(page      , target        , start      , words        )              {
   const most = Math.min(MAX_TERM_WORDS, words.length);
-  for (const suffix of [undefined, ...suffixesFor(page, target.to)]) {
-    for (let n = Math.min(RANGE_WORDS, most); n >= 1 && n <= most; n++) {
-      const term = { from: words[words.length - n] .from, to: target.to };
-      const end = keyOf(page, term);
-      if (firstMatch(page.key, end, searchFrom, (at) => followedBy(page.key, at + end.length, keyOf(page, suffix))) === term.from) return { term, suffix };
-    }
+  const searchFrom = target.keyFrom + keyOf(page, start).length;
+  for (let n = Math.min(RANGE_WORDS, most); n >= 1 && n <= most; n++) {
+    const term = { from: words[words.length - n] .from, to: target.to };
+    const at = target.keyFrom + keyOf(page, { from: target.from, to: term.from }).length;
+    if (page.key.indexOf(keyOf(page, term), searchFrom) === at) return term;
   }
   return null;
 }
 
-function rangeFragment(page      , target      )                      {
-  const selection = page.key.slice(target.from, target.to);
+function rangeFragment(page      , target        )                      {
+  const selection = textOf(page, target);
   const firstBreak = selection.indexOf("\n");
   let startWords        ;
   let endWords        ;
@@ -3713,24 +3746,18 @@ function rangeFragment(page      , target      )                      {
     endWords = wordsIn(page, { from: target.from + selection.lastIndexOf("\n") + 1, to: target.to });
   }
   const start = rangeStart(page, target, startWords);
-  const end = start && rangeEnd(page, target, start.term.to, endWords);
+  const end = start && rangeEnd(page, target, start.term, endWords);
   if (!start || !end) return null;
-  return {
-    ...(start.prefix && { prefix: textOf(page, start.prefix) }),
-    start: textOf(page, start.term),
-    end: textOf(page, end.term),
-    ...(end.suffix && { suffix: textOf(page, end.suffix) }),
-  };
+  return { ...(start.prefix && { prefix: textOf(page, start.prefix) }), start: textOf(page, start.term), end: textOf(page, end) };
 }
 
 function chooseTextFragment(context                  )                      {
-  const { selected, before, after, pageText } = toWordBoundaries(context);
-  const selection = pageOf(selected);
-  if (!selection.text) return null;
-  const page = pageOf(pageText);
-  const target = selectionSpan(page.key, selection, before, after);
-  if (!target) return null;
-  if (page.key.slice(target.from, target.to).includes("\n")) return rangeFragment(page, target);
+  const page = pageOf(context.pageText);
+  const widened = toWordBoundaries(context);
+  const span = selectionSpan(page.text, widened) ?? (widened.selected === context.selected ? null : selectionSpan(page.text, context));
+  if (!span) return null;
+  const target         = { ...span, keyFrom: looselyFolded(page.text.slice(0, span.from)).length };
+  if (textOf(page, target).includes("\n")) return rangeFragment(page, target);
   if (wordsIn(page, target).length <= MAX_EXACT_WORDS) return exactFragment(page, target);
   return rangeFragment(page, target) ?? (target.to - target.from <= MAX_EXACT_CHARS ? exactFragment(page, target) : null);
 }

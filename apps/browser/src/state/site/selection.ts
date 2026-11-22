@@ -11,7 +11,7 @@ import { openModeFor } from "../bookmarks/actions";
 import { openFromPage } from "../tabs/openFromPage";
 import { awaitsFirstPage } from "../tabs/pendingAddress";
 import { noteQuoteLink, noteSelectedTabUrlsCopied, noteUrlCopied } from "../telemetry/urlCopies";
-import { consentToken } from "../telemetry/client";
+import { consentToken, type ConsentToken } from "../telemetry/client";
 import { selectedTabIds } from "../pins/organize";
 import { copyLinks } from "../bookmarks/linkMenus";
 import { tabTitle } from "../browser/model";
@@ -83,19 +83,19 @@ const SELECTION_CONTEXT = `(() => {
   }));
 })()`;
 
-async function linkToSelection(tabId: string): Promise<string | null> {
+async function linkToSelection(tabId: string, consent: ConsentToken | null): Promise<string | null> {
   const url = store().tabs[tabId]?.url;
   const web = webviews.get(tabId);
   if (!url || !/^https?:/.test(url) || !web) return null;
   const context = await web.evaluate<SelectionContext>(SELECTION_CONTEXT);
-  const fragment = context && !("error" in context) ? chooseTextFragment(context) : null;
+  if (!context || "error" in context) return null;
+  const fragment = chooseTextFragment(context);
+  noteQuoteLink(!!fragment, consent);
   return fragment ? withTextFragment(cleanUrl(url), fragment) : null;
 }
 
 export async function copyLinkToSelection(tabId: string) {
-  const consent = consentToken();
-  const link = await linkToSelection(tabId);
-  noteQuoteLink(!!link, consent);
+  const link = await linkToSelection(tabId, consentToken());
   const windowId = store().tabs[tabId]?.windowId;
   if (!link || !windowId) return;
   copyText(link);
