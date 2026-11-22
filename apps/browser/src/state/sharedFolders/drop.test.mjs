@@ -318,3 +318,14 @@ test("a kept folder keeps its subfolder while another nested group exists", () =
   assert.equal(S().groups[docs].parentId, f.team);
   staysShared(f);
 });
+
+test("the Empty Folder row never lands between the panes of the split the link made", () => {
+  const f = sidebar();
+  S().pinTabs([f.other], true, true);
+  S().placeTabs([f.other], { pinned: true, row: true, beforeId: f.ids[0] });
+  assert.ok(dropTabOnRow(f.ids[0], f.other, "right"), "setup: the link joins the pinned row above its folder");
+  const order = S().windows[f.w].tabIds;
+  assert.equal(order.indexOf(f.ids[0]), order.indexOf(f.other) + 1);
+  assert.deepEqual(rows(f.team), ["Empty Folder"]);
+  staysShared(f);
+});

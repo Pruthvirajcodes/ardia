@@ -3,6 +3,7 @@ import type { Tab, TabGroup } from "../browser/types";
 import { findLast, makeTab, pinKeyOf } from "../browser/model";
 import { ASLEEP, hasPage } from "../tabs/pageSession";
 import { isRegularWindow } from "../windows/small";
+import { splitOf, splitTabIdsOf } from "../splits/splits";
 import { groupKeptOpen } from "./closeGuard";
 import { ancestorIds, orderSections, placeGroups, syncGroupOrder } from "./groups";
 
@@ -22,31 +23,25 @@ export function withoutEmptyFolderRows(s: BrowserState, ids: string[]): string[]
   return ids.some(holdsFolder) ? ids.filter((id) => !holdsFolder(id)) : ids;
 }
 
+export const outsideKeptFolders = (s: BrowserState, ids: string[]) =>
+  ids.filter((id) => !Object.values(s.groups).some((g) => g.tabIds.includes(id) && groupKeptOpen(g.id)));
+
 export function withEmptiedFoldersKept(before: BrowserState, after: BrowserState, left: ReadonlySet<string>): BrowserState {
-  const dissolved = Object.values(before.groups).filter((g) => !after.groups[g.id] && after.windows[g.windowId] && g.tabIds.some((id) => left.has(id)) && groupKeptOpen(g.id));
-  if (!dissolved.length) return after;
+  const emptied = Object.values(before.groups).filter((g) => !after.groups[g.id] && after.windows[g.windowId] && g.tabIds.some((id) => left.has(id)) && groupKeptOpen(g.id));
+  if (!emptied.length) return after;
   const placeOf = (g: TabGroup) => before.windows[g.windowId]!.tabIds.indexOf(g.tabIds[0]!);
   let next = after;
-  for (const g of dissolved.sort((a, z) => placeOf(z) - placeOf(a))) {
+  for (const g of emptied.sort((a, z) => placeOf(z) - placeOf(a))) {
     const w = next.windows[g.windowId]!;
-    const staying = g.tabIds.filter((id) => !left.has(id) && w.tabIds.includes(id));
-    const tabs = { ...next.tabs };
+    const row = emptyFolderRow(g.windowId, g.profileId);
+    const above = findLast(before.windows[g.windowId]!.tabIds.slice(0, placeOf(g)), (id) => !left.has(id) && w.tabIds.includes(id));
     const tabIds = [...w.tabIds];
-    let members = staying;
-    if (!members.length) {
-      const row = emptyFolderRow(g.windowId, g.profileId);
-      const above = findLast(before.windows[g.windowId]!.tabIds.slice(0, placeOf(g)), (id) => !left.has(id) && w.tabIds.includes(id));
-      tabIds.splice(above ? tabIds.indexOf(above) + 1 : 0, 0, row.id);
-      tabs[row.id] = row;
-      members = [row.id];
-    }
-    const { autoUngroup: _, ...kept } = g;
-    const groups = { ...next.groups, [g.id]: { ...kept, tabIds: members } };
-    for (const child of Object.values(before.groups)) {
-      const chain = ancestorIds(before.groups, child.id);
-      if (!groups[child.id] || !chain.includes(g.id)) continue;
-      groups[child.id] = { ...groups[child.id]!, parentId: chain.find((id) => groups[id]) };
-    }
+    let at = above ? tabIds.indexOf(above) + 1 : 0;
+    const panes = splitTabIdsOf(splitOf(next, above)) ?? [];
+    while (at < tabIds.length && panes.includes(tabIds[at]!)) at++;
+    tabIds.splice(at, 0, row.id);
+    const tabs = { ...next.tabs, [row.id]: row };
+    const groups = { ...next.groups, [g.id]: { ...g, tabIds: [row.id] } };
     const window = { ...w, tabIds: orderSections(placeGroups(tabIds, groups, w.id), tabs, groups) };
     next = { ...next, tabs, groups: syncGroupOrder(groups, window), windows: { ...next.windows, [w.id]: window } };
   }

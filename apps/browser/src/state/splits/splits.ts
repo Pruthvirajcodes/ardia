@@ -36,6 +36,7 @@ export type OpenPaneOptions = {
   adoptId?: AdoptId;
   inPlaceOf?: string;
   openedForSplit?: boolean;
+  dropped?: boolean;
 };
 export type OpenPaneResult = { ok: true; tabId: string; splitId: string } | { ok: false; reason: "max" | "invalid" | "unavailable" };
 
@@ -186,7 +187,7 @@ function gatherLane(s: BrowserState, anchorId: string, members: string[]): Brows
   let groups = leaveGroups(s.groups, moving);
   const group = innermostGroupOf(s.groups, anchorId);
   if (group && groups[group.id]) groups = { ...groups, [group.id]: { ...groups[group.id]!, tabIds: [...groups[group.id]!.tabIds, ...moving] } };
-  return withEmptiedFoldersKept(s, { ...s, windows: { ...s.windows, [w.id]: window }, groups: syncGroupOrder(groups, window) }, moving);
+  return { ...s, windows: { ...s.windows, [w.id]: window }, groups: syncGroupOrder(groups, window) };
 }
 
 function besideAnchor(s: BrowserState, anchorId: string, ids: string[]): BrowserState {
@@ -260,6 +261,7 @@ export const createSplitsSlice: StateCreator<BrowserState, [], [], SplitsSlice> 
   openSplitPane(windowId, o = {}) {
     if (!splitViewAvailable) return { ok: false, reason: "unavailable" };
     let s = get();
+    const beforeDrop = s;
     const w = s.windows[windowId];
     const anchorId = o.anchorTabId ?? (w ? w.activeTabIds[w.profileId] : undefined);
     const anchor = anchorId ? s.tabs[anchorId] : undefined;
@@ -289,6 +291,7 @@ export const createSplitsSlice: StateCreator<BrowserState, [], [], SplitsSlice> 
     const split = withPane(current, anchor.id, tabId, o.side ?? "right", windowId);
     if (!split) return { ok: false, reason: "max" };
     s = gather({ ...s, splits: { ...s.splits, [split.id]: split } }, anchor.id, splitTabIds(split), joining);
+    if (o.dropped) s = withEmptiedFoldersKept(beforeDrop, s, new Set([tabId, ...splitTabIds(split).filter((id) => id !== anchor.id)]));
     if (!o.background) s = apply(s, activated(s, tabId));
     set(s);
     return { ok: true, tabId, splitId: split.id };

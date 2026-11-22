@@ -63,7 +63,7 @@ export function openLinkInSplit(sourceTabId: string, url: string, adoptId?: Adop
 export function dropTabIntoSplit(tabId: string, targetTabId: string, side: SplitSide): string | null {
   const target = store().tabs[targetTabId];
   if (!target || tabId === targetTabId || !withoutEmptyFolderRows(store(), [tabId]).length) return null;
-  return openSplitPane(target.windowId, { tabId, anchorTabId: targetTabId, side });
+  return openSplitPane(target.windowId, { tabId, anchorTabId: targetTabId, side, dropped: true });
 }
 
 export type RowSplitDrop = { adopted: SplitLane | null };

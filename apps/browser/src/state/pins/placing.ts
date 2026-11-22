@@ -8,7 +8,6 @@ import type { BrowserWindow, TabPin, TileFolder } from "../browser/types";
 import { pinnedGroupMembers } from "../browser/structure";
 import { pinHome } from "./pinHomes";
 import { tileFolderOf } from "./tileFolders";
-import { withEmptiedFoldersKept } from "../groups/emptyFolder";
 
 export type TabPlacement = {
   pinned: boolean;
@@ -85,8 +84,7 @@ export function placing(s: BrowserState, ids: string[], p: TabPlacement): Browse
   let tabIds = placeGroups(rest, groups, w.id);
   tabIds = orderSections(tabIds, tabs, groups);
   const window: BrowserWindow = { ...w, tabIds };
-  const placed = { ...s, tabs, pinChoices, pinSync, groups: syncGroupOrder(groups, window), windows: { ...s.windows, [w.id]: window } };
-  return withEmptiedFoldersKept(s, placed, movingSet);
+  return { ...s, tabs, pinChoices, pinSync, groups: syncGroupOrder(groups, window), windows: { ...s.windows, [w.id]: window } };
 }
 
 function withHomesOf(s: BrowserState, before: BrowserState, ids: string[]): BrowserState {
