@@ -1,4 +1,5 @@
 import { pressesWithoutRelease, pressRepeated } from "../../platform/focus";
+import { countKeptGroupDrops } from "../groups/closeGuard";
 import { capture, consentToken, stillValid, onConsentPeriodChange, type ConsentToken } from "./client";
 import { takeHoverCardCounts } from "./hoverCardCounts";
 import { percentile } from "./transport";
@@ -196,6 +197,8 @@ export const noteSidebarDrop = (kind: SidebarDropKind, drag?: object) => void (o
 export function noteSharedFolderDrop(answer: "asked" | "confirmed", consent: ConsentToken | null) {
   if (stillValid(consent)) tally[`drops_shared_folder_${answer}` as const]++;
 }
+
+countKeptGroupDrops(noteSharedFolderDrop);
 
 export type DragProfileHold = "icon" | "edge";
 

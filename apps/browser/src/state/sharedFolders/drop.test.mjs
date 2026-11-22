@@ -241,10 +241,24 @@ test("an answer that can't move the folder any more isn't counted as a confirmed
   shellNativeModules.ArdiaDialogs.confirm = async () => (S().ungroup(outer), { confirmed: true, suppressed: false });
   t.after(() => (shellNativeModules.ArdiaDialogs.confirm = real));
   const counted = devTabPresses().drops_shared_folder_confirmed;
+  const asked = devTabPresses().drops_shared_folder_asked;
   dropGroup(f.team, { zone: "group", groupId: outer, beforeId: null });
   await settle();
   staysShared(f);
   assert.equal(devTabPresses().drops_shared_folder_confirmed, counted);
+  assert.equal(devTabPresses().drops_shared_folder_asked, asked + 1);
+});
+
+test("a confirmed drop out of Pinned is counted once", async (t) => {
+  setConsentPeriod(true, "drop-test-confirmed");
+  t.after(() => setConsentPeriod(false, null));
+  answering(t, true);
+  const f = sidebar();
+  const outer = S().groupTabs([f.other], { pinned: true, name: "Outer" });
+  const counted = devTabPresses().drops_shared_folder_confirmed;
+  dropGroup(f.team, { zone: "group", groupId: outer, beforeId: null });
+  await settle();
+  assert.equal(devTabPresses().drops_shared_folder_confirmed, counted + 1);
 });
 
 test("the confirmed move is the user's own write, not a running automation command's", async (t) => {
