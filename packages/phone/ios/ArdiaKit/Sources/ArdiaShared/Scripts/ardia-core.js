@@ -3517,7 +3517,8 @@ const { charAfter, charBefore, collapsed, isInsideWord, isJoinable, isSureWordEd
 
                                          
                                           
-                                                               
+                                                                              
+                                           
                                           
 
 const MAX_EXACT_WORDS = 10;
@@ -3530,6 +3531,7 @@ const CAPPED_CONTEXT_CHARS = 48;
 const PAGE_TEXT_CAP = 3_000_000;
 const MAX_SCORING_WORK = 3_000_000;
 const MATCH_COST = 16;
+const GLUE_COST = 32;
 const SEARCHED_HEAD_CHARS = 256;
 const COMPARED_CHARS_PER_COST = 8;
 const MAX_SCANNED_CHARS = 2 * CONTEXT_CHARS;
@@ -3578,26 +3580,35 @@ function sharedAfter(text        , at        , context        )         {
   return shared;
 }
 
-function sharedPastGlue(text        , to        , { selected, after }                  , right        )                {
-  if (ENDS_LINE.test(selected)) {
-    const lineEnd = text.indexOf("\n", to);
-    if (lineEnd === -1 || lineEnd - to > MAX_TRAILER_CHARS) return null;
+function trailerEnd(text        , to        )         {
+  const at = text.slice(to, to + MAX_TRAILER_CHARS + 1).indexOf("\n");
+  return at === -1 ? -1 : to + at;
+}
+
+function bracketGlue(after        )              {
+  if (!/^\s*\[/.test(after)) return null;
+  const unglued = after.slice(0, CONTEXT_CHARS).replace(/^[^\p{L}\p{N}\p{M}_]+/u, "");
+  const word = wordRunAfter(unglued);
+  return word ? { word, rest: collapsed(unglued).replace(/\s/g, "") } : null;
+}
+
+function sharedPastGlue(text        , to        , endsLine         , right        , glue             )                {
+  if (endsLine) {
+    const lineEnd = trailerEnd(text, to);
+    if (lineEnd === -1) return null;
     if (!right) return /^\S+$/.test(text.slice(to, lineEnd)) ? 0 : null;
     const unmarked = right.replace(/^[^\p{L}\p{N}]+/u, "");
     const shared = sharedAfter(text, lineEnd, unmarked);
     return unmarked && shared >= Math.min(TRAILER_CONTEXT_CHARS, unmarked.length) ? shared : null;
   }
-  if (!/^\s*\[/.test(after)) return null;
-  const unglued = after.slice(0, CONTEXT_CHARS).replace(/^[^\p{L}\p{N}\p{M}_]+/u, "");
-  const word = wordRunAfter(unglued);
-  if (!word || !wordRunAfter(text.slice(to, to + CONTEXT_CHARS)).startsWith(word)) return null;
-  return sharedAfter(text, to, collapsed(unglued).replace(/\s/g, ""));
+  return glue && text.startsWith(glue.word, to) ? sharedAfter(text, to, glue.rest) : null;
 }
 
 function spanPastTrailers(text        , wanted        , left        , right        )                           {
   const [first, ...rest] = wanted.split("\n");
   if (!first || !rest.length) return undefined;
-  let found                   ;
+  let found                          ;
+  let bestScore = -1;
   let nearMiss = false;
   let work = 0;
   candidates: for (let from = text.indexOf(first); from !== -1; from = text.indexOf(first, from + 1)) {
@@ -3612,8 +3623,8 @@ function spanPastTrailers(text        , wanted        , left        , right     
     for (const line of rest) {
       work += 1 + line.length / COMPARED_CHARS_PER_COST;
       if (work > MAX_SCORING_WORK) return null;
-      const lineEnd = text.indexOf("\n", to);
-      if (lineEnd === -1 || lineEnd - to > MAX_TRAILER_CHARS) continue candidates;
+      const lineEnd = trailerEnd(text, to);
+      if (lineEnd === -1) continue candidates;
       const trails = lineEnd > to;
       if (trails && !(isJoinable(charBefore(text, to)) && isJoinable(charAfter(text, to)))) continue candidates;
       if (!text.startsWith(line, lineEnd + 1)) {
@@ -3625,8 +3636,10 @@ function spanPastTrailers(text        , wanted        , left        , right     
     }
     if (isInsideWord(text, to) || (right ? !sharedAfter(text, to, right) : to < text.length && text[to] !== "\n")) continue;
     if (!trailed) continue;
-    if (found) return null;
-    found = { from, to, firstLineEnd, glued };
+    const score = (left ? sharedBefore(text, from, left) : 0) + (right ? sharedAfter(text, to, right) : 0);
+    if (score < bestScore) continue;
+    found = score === bestScore ? null : { from, to, score, firstLineEnd, glued };
+    bestScore = score;
   }
   return found && nearMiss ? null : found;
 }
@@ -3640,6 +3653,8 @@ function selectionSpan(text        , context                  , truncated       
   const left = collapsed(before.slice(-CONTEXT_CHARS)).replace(/\s/g, "");
   const right = collapsed(after.slice(0, CONTEXT_CHARS)).replace(/\s/g, "");
   const endsLine = !truncated && ENDS_LINE.test(selected);
+  const glue = bracketGlue(after);
+  const mayBeGlued = !truncated && (endsLine || (!!right && !!glue));
   const bestIn = (haystack        , needle        )                           => {
     let best                          ;
     let bestScore = -1;
@@ -3658,7 +3673,11 @@ function selectionSpan(text        , context                  , truncated       
       if (!right && to < text.length && text[to] !== "\n" && !(endsLine && isInsideWord(text, to))) continue;
       const leftShared = left ? sharedBefore(text, from, left) : 0;
       const rightShared = right ? sharedAfter(text, to, right) : 0;
-      const pastGlue = (right || endsLine) && !truncated && isInsideWord(text, to) ? sharedPastGlue(text, to, context, right) : null;
+      let pastGlue                = null;
+      if (mayBeGlued && isInsideWord(text, to)) {
+        work += GLUE_COST;
+        pastGlue = sharedPastGlue(text, to, endsLine, right, glue);
+      }
       const score = leftShared + (pastGlue ?? rightShared);
       work += score + MATCH_COST;
       if (work > MAX_SCORING_WORK) return null;
@@ -3668,19 +3687,18 @@ function selectionSpan(text        , context                  , truncated       
         rejectedScore = Math.max(rejectedScore, score);
         continue;
       }
-      best = score === bestScore ? null : { from, to, glued: pastGlue !== null };
+      best = score === bestScore ? null : { from, to, score, glued: pastGlue !== null };
       bestScore = score;
     }
     return best && rejectedScore >= bestScore ? null : best;
   };
-  const found = bestIn(text, wanted);
-  if (found !== undefined) {
-    if (!found || truncated || left || right || !wanted.includes("\n")) return found;
-    return spanPastTrailers(text, wanted, left, right) === undefined ? found : null;
-  }
-  const joined = bestIn(withoutBreaks(text), withoutBreaks(wanted));
-  if (joined !== undefined) return joined;
-  return truncated ? null : (spanPastTrailers(text, wanted, left, right) ?? null);
+  const exact = bestIn(text, wanted);
+  const found = exact === undefined ? bestIn(withoutBreaks(text), withoutBreaks(wanted)) : exact;
+  const past = truncated ? undefined : spanPastTrailers(text, wanted, left, right);
+  if (past === undefined) return found ?? null;
+  if (found === undefined) return past;
+  if (!found || !past || found.score === past.score) return null;
+  return found.score > past.score ? found : past;
 }
 
 function wordsIn({ text }      , { from, to }      )         {
@@ -3724,7 +3742,8 @@ function nothingMatchesEarlier(key        , at        , prefix        , start   
 function nothingMatchesLater(key        , at        , prefix        , start        , suffix        )          {
   for (const beforeStart of prefix ? ["", " "] : [""]) {
     for (const afterStart of suffix ? ["", " "] : [""]) {
-      if (key.indexOf(prefix + beforeStart + start + afterStart + suffix, at + 1) !== -1) return false;
+      const from = Math.max(0, at - prefix.length - beforeStart.length + 1);
+      if (key.indexOf(prefix + beforeStart + start + afterStart + suffix, from) !== -1) return false;
     }
   }
   return true;

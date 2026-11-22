@@ -345,6 +345,24 @@ test("a double-clicked glued heading with nothing after it is linked only when i
   assert.equal(chooseTextFragment({ selected: "Usage\n", before: "", after: "", pageText: `Contents\nUsage\n\n${glued}` }), null);
 });
 
+test("a glued heading with part of its paragraph wins over a copy by its context", () => {
+  const pageText = `${intro}\nUsageedit\n${body} Later it grew.\nSecond intro.\nUsage\n${body} Different ending.`;
+  const fragment = chooseTextFragment({ selected: `Usage\n${body}`, before: "", after: " Later it grew.", pageText });
+  assert.equal(fragment?.start, "Usage");
+  assert.notEqual(fragment?.prefix, "Second intro.");
+  assert.ok(fragment);
+});
+
+test("a joined copy doesn't win over a glued heading and its paragraph", () => {
+  const pageText = `${intro}\nUsageedit\n${body}\nSecond intro.\nUsage ${body}`;
+  assert.equal(chooseTextFragment({ selected: `Usage\n${body}`, before: "", after: "", pageText }), null);
+});
+
+test("a prefix that also ends right before a later copy isn't unique", () => {
+  const pageText = "Wait Alphaedit\nAlphaedit\nAlpha";
+  assert.deepEqual(chooseTextFragment({ selected: "Alpha", before: "", after: "[edit]", pageText }), { prefix: "Wait Alphaedit", start: "Alpha" });
+});
+
 test("words split by a comma are words of their own", () => {
   assert.equal(chooseTextFragment({ selected: "world", before: "hello,", after: "", pageText: "hello,world" })?.start, "world");
 });
