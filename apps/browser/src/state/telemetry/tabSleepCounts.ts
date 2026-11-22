@@ -19,8 +19,8 @@ export function noteTabSlept(pinned: boolean, reason: string | null) {
   if (pinned && reason === "proactive") pending.pinnedTabsSleptByMemorySaver++;
 }
 
-export function noteCloseWokeSleepingTab() {
-  pending.closesWokeSleepingTab++;
+export function noteCloseWokeSleepingTab(consent?: ConsentToken | null) {
+  countFor(consentOrNow(consent), () => void pending.closesWokeSleepingTab++);
 }
 
 export function noteTabSleptOverBudget(consent?: ConsentToken | null) {

@@ -2,7 +2,7 @@ import type { BrowserState } from "../browser/store";
 import { leaveGroups } from "../groups/groups";
 import { withShownTab } from "../groups/shownTabs";
 import { byRecentUse, inPinnedContainer, makeTab, navigationTo, newId, TILE_PIN, viewTabIds, without } from "../browser/model";
-import { closeSuccessor, forgetOpeners, insertionIndex } from "./openers";
+import { closeSuccessor, forgetOpeners, insertionIndex, sleepsNow } from "./openers";
 import { onUrlChange, pruneSelection } from "../pins/organize";
 import { isClosedPin } from "../pins/tabCleanup";
 import { adoptedPage, ASLEEP, frozenOn, hasOwnOrSharedPage, hasPage, isAsleep, isLazy, loadedPage, needsPage, withWake, wokenPage } from "./pageSession";
@@ -18,7 +18,7 @@ import { orderSections } from "../groups/groups";
 import { samePage } from "../../lib/url";
 import { historyOf } from "../history/history";
 import { pinHome } from "../pins/pinHomes";
-import { noteTopAppsKeptRunning } from "../telemetry/tabSleepCounts";
+import { noteCloseWokeSleepingTab, noteTopAppsKeptRunning } from "../telemetry/tabSleepCounts";
 
 export type NewTabOptions = {
   url?: string;
@@ -158,6 +158,7 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
       const before = w.tabIds.filter((id) => s.tabs[id]?.profileId === profileId);
       const left = withoutTopApps(s, before.filter((id) => !gone.has(id)));
       const next = otherPane(s, activeId, gone) ?? closeSuccessor(s, activeId, before, left);
+      if (record && next && profileId === w.profileId && sleepsNow(s, next)) noteCloseWokeSleepingTab();
       if (next) activeTabIds[profileId] = next;
       else delete activeTabIds[profileId];
     }

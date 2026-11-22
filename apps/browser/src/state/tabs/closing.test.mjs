@@ -9,6 +9,8 @@ const { closeWindowDialog } = await import("../windows/windowClose.ts");
 const { noteDiscarded } = await import("./tabLifecycle.ts");
 const { isSleeping, useLifecycle } = await import("./sleepingTabs.ts");
 const { takeTabSleepCounts } = await import("../telemetry/tabSleepCounts.ts");
+const { setConsentPeriod } = await import("../telemetry/consentPeriod.ts");
+const { successorWhenLeaving } = await import("../windows/card.ts");
 await import("../../test-native/index.ts");
 
 const S = () => useBrowser.getState();
@@ -56,13 +58,20 @@ test("⌘W on the front tab switches to an awake tab and leaves a tab put to sle
   assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 0);
 });
 
-test("⌘W with only sleeping tabs left still switches to the one used last, and counts the wake", (t) => {
-  const { w, ids: [a, b, c] } = visitedInOrder(t, "a", "b", "c");
-  noteDiscarded(a, "proactive");
-  noteDiscarded(b, "external");
-  S().closeTab(c);
-  assert.equal(activeTabId(S(), w), b);
-  assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 1);
+test("⌘W with only sleeping tabs left still switches to the one used last, and counts the wake while sharing is on", (t) => {
+  for (const sharing of [true, false]) {
+    setConsentPeriod(sharing, "epoch");
+    const { w, ids: [a, b, c] } = visitedInOrder(t, "a", "b", "c");
+    noteDiscarded(a, "proactive");
+    noteDiscarded(b, "external");
+    assert.equal(successorWhenLeaving([c], w), b, "a drag's preview of the close");
+    assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, 0, "a preview isn't a close");
+    S().closeTab(c);
+    assert.equal(activeTabId(S(), w), b);
+    assert.equal(takeTabSleepCounts().closes_woke_sleeping_tab, sharing ? 1 : 0);
+    t.mock.timers.reset();
+  }
+  setConsentPeriod(false, null);
 });
 
 test("⌘W on the last tab closes the window; closing every tab at once keeps it with a New Tab", () => {
