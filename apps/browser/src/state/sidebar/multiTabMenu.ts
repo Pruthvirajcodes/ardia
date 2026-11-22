@@ -4,6 +4,8 @@ import { useBrowser, type BrowserState } from "../browser/store";
 import { inPinnedContainer, isIncognitoProfile, isPinnedRow, pinnedSectionTitle, pinSection, viewTabIds } from "../browser/model";
 import { groupOf } from "../pins/tabGrouping";
 import { bookmarkTabs, copyUrls, newGroupWithSelection } from "./actions";
+import { noteSelectionRemovedFromGroups } from "../telemetry/usage";
+import { consentToken } from "../telemetry/choice";
 import { bookmarksShown } from "../bookmarks/visibility";
 import { bookmarkFolderItems, groupItems, hintWhen, profileItems, sections, windowItems, withAlternate, type Destination } from "./menuParts";
 
@@ -70,6 +72,7 @@ function sendTabs(windowId: string, ids: string[], profileId: string, to: Destin
 
 export async function openMultiMenu(windowId: string, shown: string[]) {
   const f = multiTabMenuFacts(store(), windowId, shown);
+  const consent = consentToken();
   const choice = await chooseFromMenu(multiTabMenuItems(store(), windowId, shown, f));
   const s = store();
   const here = (list: string[]) => list.filter((id) => s.tabs[id]?.windowId === windowId);
@@ -80,8 +83,10 @@ export async function openMultiMenu(windowId: string, shown: string[]) {
   else if (choice === "pinRows") s.pinTabs(ids, true, true);
   else if (choice === "duplicate") ids.forEach((id) => store().duplicateTab(id));
   else if (choice === "newGroup") newGroupWithSelection(windowId, ids);
-  else if (choice === "ungroup") s.removeTabsFromGroup(ids);
-  else if (choice === "copy") copyUrls(ids, false);
+  else if (choice === "ungroup") {
+    s.removeTabsFromGroup(ids);
+    noteSelectionRemovedFromGroups(ids.length, consent);
+  } else if (choice === "copy") copyUrls(ids, false);
   else if (choice === "copyMd") copyUrls(ids, true);
   else if (choice === "bar") void bookmarkTabs(windowId, ids, { kind: "folder", parentId: undefined });
   else if (choice === "close") s.closeTabs(ids);
