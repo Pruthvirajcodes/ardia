@@ -126,7 +126,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - id: engine-key
-        run: echo "key=$(engine/engine-key.sh)" >> "$GITHUB_OUTPUT"
+        run: echo "key=$(engine/engine-key.sh --platform linux)" >> "$GITHUB_OUTPUT"
       - name: Which packages
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
@@ -180,7 +180,7 @@ jobs:
             exit 1
           fi
           selected=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["engine_key"])' "$engine/manifest.json")
-          if [ "$selected" = "$ENGINE_KEY" ]; then
+          if python3 -I scripts/linux/runtime_files.py serves --engine "$engine" --key "$ENGINE_KEY"; then
             label="${GITHUB_SHA:0:12}"
             echo "ENGINE_EXACT=1" >> "$GITHUB_ENV"
             echo "### Linux engine ${ENGINE_KEY:0:12} (exact)" >> "$GITHUB_STEP_SUMMARY"

@@ -129,8 +129,8 @@ pnpm install
 ```
 
 The engine (Chrome's framework, built from our patched Chromium) comes prebuilt: with no local engine build, the app's
-build downloads the one matching your checkout's `engine/` (about 110 MB, once; Apple Silicon only) and checks it
-against `packages/ardiacore/prebuilt-engines.tsv`. Every release whose engine changed publishes one. If `main`'s engine
+build downloads the one matching your checkout's macOS engine key (`engine/engine-key.sh --platform macos`; about
+110 MB, once; Apple Silicon only) and checks it against `packages/ardiacore/prebuilt-engines.tsv`. Every release whose engine changed publishes one. If `main`'s engine
 is newer than the last release's, work from a release tag (`v0.2.30`, say), or run
 `packages/ardiacore/scripts/fetch-engine.sh --nearest` to build against the newest prebuilt anyway. Passkeys and saved
 cards need our team ID and won't work in a build signed by anyone else.
