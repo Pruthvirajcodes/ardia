@@ -87,6 +87,7 @@ export const SETTING_SPECS = {
   warnBeforeClosingLastTab: flag(true, SYNCED),
   keepTopAppsRunning: flag(false, SYNCED),
   tabReorderHaptics: flag(true, SYNCED),
+  swipeBetweenTabs: flag(true, SYNCED),
   undoReopensClosedTab: flag(false, SYNCED),
   warnBeforeMovingTabsToProfile: flag(true, SYNCED),
   shareTabsAcrossWindows: flag(false),
