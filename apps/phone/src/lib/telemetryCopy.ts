@@ -98,8 +98,8 @@ export const PHONE_WHATS_SENT: { title: string; items: SentItem[] }[] = [
         fields: ["night_shade_verdicts_reused", "night_shade_verdicts_learned", "night_shade_verdicts_corrected"],
       },
       {
-        text: "In the same daily counts: how often a picture of a page for the tab switcher was thrown away because it came out as one flat color or the page was not on screen, and how often it had to come from the page engine instead of a copy of the screen. Counts only, and never while browsing privately",
-        fields: ["page_pictures_blank", "page_pictures_hidden", "page_pictures_webkit"],
+        text: "In the same daily counts: how often a picture of a page for the tab switcher was thrown away because it came out as one flat color or the page was not on screen, and how often it had to come from the page engine instead of a copy of the screen; on Android, how often a page's picture was taken again because you had scrolled the page while it was still loading, so switching back to the tab shows where you left it. Counts only, and never while browsing privately",
+        fields: ["page_pictures_blank", "page_pictures_hidden", "page_pictures_webkit", "page_pictures_scrolled"],
       },
       {
         text: "In the same daily counts: how often you chose Custom in Settings › Appearance, and how many changes you made on its Theme page. Counts only, never the colors or settings you picked",
