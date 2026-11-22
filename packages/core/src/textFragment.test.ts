@@ -385,6 +385,23 @@ test("a lone glued heading still keeps a copy from winning", () => {
   assert.equal(chooseTextFragment({ selected: `Usage\n${body}`, before: "", after: "", pageText }), null);
 });
 
+test("a weaker longer-word lookalike doesn't veto the selection", () => {
+  for (const [word, longer] of [["Note", "Notes"], ["Install", "Installing"]] as const) {
+    const pageText = `${longer}\nRestart the server. This applies to Linux only.\n${word}\nRestart the server. The cache clears automatically on boot.`;
+    const selected = `${word}\nRestart the server.`;
+    const fragment = chooseTextFragment({ selected, before: "", after: " The cache clears automatically on boot.", pageText });
+    assert.equal(fragment?.start, word);
+    assert.equal(fragment?.end?.endsWith("server."), true);
+  }
+});
+
+test("a common first word doesn't spend the trailer budget", () => {
+  const next = "Here is a completely unique second paragraph with distinct words.";
+  const pageText = `${"a ".repeat(250_000)}\nThis first paragraph ends with a\n${next} And it continues right after.`;
+  const fragment = chooseTextFragment({ selected: `a\n${next}`, before: "This first paragraph ends with ", after: " And it continues right after.", pageText });
+  assert.equal(fragment?.start, "a");
+});
+
 test("words split by a comma are words of their own", () => {
   assert.equal(chooseTextFragment({ selected: "world", before: "hello,", after: "", pageText: "hello,world" })?.start, "world");
 });
