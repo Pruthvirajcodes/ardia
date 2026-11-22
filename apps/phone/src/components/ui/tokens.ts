@@ -131,6 +131,7 @@ export const menuLayout = {
   zoomReset: 48,
   sheetTopGap: Platform.OS === "ios" ? 10 : 24,
   sheetGrabber: Platform.OS === "ios" ? { width: 36, height: 5, top: 6 } : null,
+  halfSheetGrabber: { width: 32, height: 4, top: 10 },
 } as const;
 
 export const pageMenuLayout = { actionGlyph: 24, barSpacing: 8, groupSpacing: 16, zoomHeight: 32, zoomButtonWidth: 40, zoomReset: 48, rowInset: 16, accessibilityBottom: 24, pressedScale: 0.94 } as const;
