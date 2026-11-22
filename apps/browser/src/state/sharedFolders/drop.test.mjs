@@ -156,3 +156,23 @@ test("a link that leaves others behind adds no row, and an unshared folder still
   dropTab(plain.ids[0], { zone: "list", beforeId: null });
   assert.equal(S().groups[plain.team], undefined);
 });
+
+test("dragging one of two links out of a shared folder made by ⌘-click keeps the other link, and its file", () => {
+  const f = sidebar({ links: 2 });
+  useBrowser.setState((s) => ({ groups: { ...s.groups, [f.team]: { ...s.groups[f.team], autoUngroup: true } } }));
+  dropTab(f.ids[0], { zone: "list", beforeId: null });
+  assert.deepEqual(S().groups[f.team]?.tabIds, [f.ids[1]]);
+  staysShared(f);
+});
+
+test("emptying two shared folders at once keeps their order", () => {
+  const a = sidebar();
+  const link = S().newTab(a.w, { url: `https://second-link${runs}.example/`, background: true });
+  const b = S().groupTabs([link], { pinned: true, name: "Second" });
+  bindFolder(a.profileId, pinKeyOf(S().groups[b]), `/scratch/Second ${runs}`);
+  const rank = (groupId) => S().windows[a.w].tabIds.indexOf(S().groups[groupId].tabIds[0]);
+  const first = rank(a.team) < rank(b);
+  S().dropTabs([a.ids[0], link], resolveDrop(S(), { kind: "tab" }, { zone: "list", beforeId: null }));
+  assert.equal(rank(a.team) < rank(b), first);
+  staysShared(a);
+});

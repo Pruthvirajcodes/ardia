@@ -1,5 +1,5 @@
 import type { BrowserState } from "../browser/store";
-import type { Tab } from "../browser/types";
+import type { Tab, TabGroup } from "../browser/types";
 import { findLast, makeTab } from "../browser/model";
 import { ASLEEP } from "../tabs/pageSession";
 import { groupKeptOpen } from "./closeGuard";
@@ -14,17 +14,24 @@ export const emptyFolderRow = (windowId: string, profileId: string): Tab => ({
 });
 
 export function withEmptiedFoldersKept(before: BrowserState, after: BrowserState, left: ReadonlySet<string>): BrowserState {
+  const dissolved = Object.values(before.groups).filter((g) => !after.groups[g.id] && after.windows[g.windowId] && g.tabIds.some((id) => left.has(id)) && groupKeptOpen(g.id));
+  if (!dissolved.length) return after;
+  const placeOf = (g: TabGroup) => before.windows[g.windowId]!.tabIds.indexOf(g.tabIds[0]!);
   let next = after;
-  for (const g of Object.values(before.groups)) {
-    const w = next.windows[g.windowId];
-    if (next.groups[g.id] || !w || !g.tabIds.some((id) => left.has(id)) || !groupKeptOpen(g.id)) continue;
-    const row = emptyFolderRow(g.windowId, g.profileId);
-    const was = before.windows[g.windowId]!.tabIds;
-    const above = findLast(was.slice(0, was.indexOf(g.tabIds[0]!)), (id) => !left.has(id) && w.tabIds.includes(id));
+  for (const g of dissolved.sort((a, z) => placeOf(z) - placeOf(a))) {
+    const w = next.windows[g.windowId]!;
+    const staying = g.tabIds.filter((id) => !left.has(id) && w.tabIds.includes(id));
+    const tabs = { ...next.tabs };
     const tabIds = [...w.tabIds];
-    tabIds.splice(above ? tabIds.indexOf(above) + 1 : 0, 0, row.id);
-    const tabs = { ...next.tabs, [row.id]: row };
-    const groups = { ...next.groups, [g.id]: { ...g, tabIds: [row.id] } };
+    let members = staying;
+    if (!members.length) {
+      const row = emptyFolderRow(g.windowId, g.profileId);
+      const above = findLast(before.windows[g.windowId]!.tabIds.slice(0, placeOf(g)), (id) => !left.has(id) && w.tabIds.includes(id));
+      tabIds.splice(above ? tabIds.indexOf(above) + 1 : 0, 0, row.id);
+      tabs[row.id] = row;
+      members = [row.id];
+    }
+    const groups = { ...next.groups, [g.id]: { ...g, tabIds: members } };
     const window = { ...w, tabIds: orderSections(tabIds, tabs, groups) };
     next = { ...next, tabs, groups: syncGroupOrder(groups, window), windows: { ...next.windows, [w.id]: window } };
   }
