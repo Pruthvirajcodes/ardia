@@ -1,6 +1,6 @@
 import type { BrowserState } from "../browser/store";
 import { changedIds } from "../browser/changes";
-import { ancestorIds, depthOf, orderSections, placeBlock, syncGroupOrder, withParent } from "../groups/groups";
+import { ancestorIds, depthsIn, orderSections, placeBlock, syncGroupOrder, withParent } from "../groups/groups";
 import { isIncognitoProfile, isPinnedRow, makeTab, newId, pinKeyOf, pinSection, TILE_PIN, without } from "../browser/model";
 import { ASLEEP, hasPage, holderOfPage } from "../tabs/pageSession";
 import { mapSlotIds, removeFromSplits, splitTabIds, stackAt } from "../splits/splits";
@@ -32,7 +32,8 @@ const splitSig = (v: PinnedSplit) => `S${splitTabIds(v).join("\u0003")}\u0001${v
 
 function innermostPinned(s: Pick<BrowserState, "groups">, own: TabGroup[]): Map<string, TabGroup> {
   const inner = new Map<string, TabGroup>();
-  for (const g of own.map((g) => [g, depthOf(s.groups, g.id)] as const).sort((a, z) => a[1] - z[1]).map(([g]) => g)) for (const id of g.tabIds) inner.set(id, g);
+  const depth = depthsIn(s.groups);
+  for (const g of own.map((g) => [g, depth(g.id)] as const).sort((a, z) => a[1] - z[1]).map(([g]) => g)) for (const id of g.tabIds) inner.set(id, g);
   return inner;
 }
 
@@ -319,10 +320,9 @@ export function mirrorPins(s: BrowserState, prev: BrowserState): BrowserState | 
   for (const [profileId, ids] of byProfile) {
     for (const id of ids) {
       const sectionNow = () => withSplits(next, next.windows[id]!, sectionOf(next, next.windows[id]!, profileId, pinnedGroupsOf(next)));
-      let x = sectionNow();
-      if (!hasDuplicates(x)) continue;
+      if (!hasDuplicates(sectionNow())) continue;
       next = apartFromKeptFolders(next, prev, id, profileId);
-      x = sectionNow();
+      const x = sectionNow();
       if (hasDuplicates(x)) next = conform(next, id, profileId, union([x]));
     }
   }
