@@ -466,6 +466,7 @@ internal class WebViewPage(
                 }
             }
             if (event.actionMasked == MotionEvent.ACTION_MOVE) scrollTracker.dragged(event.rawY.toDouble())
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) scrollTracker.released()
             false
         }
         web.setOnLongClickListener { longPressed(web) }

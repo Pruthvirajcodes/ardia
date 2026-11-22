@@ -168,6 +168,19 @@ class PageMotionTest {
     }
 
     @Test
+    fun releasingAfterADragDuringResizeSettleRestoresResizeProtection() {
+        val tracker = ScrollDirectionTracker()
+        assertEquals(ScrollDirection.Down, tracker.offer(1_200.0, atEnd = false, nowMillis = 0))
+        tracker.touched(1_000.0)
+        tracker.resized(1_000)
+        tracker.dragged(1_040.0)
+        assertNull(tracker.offer(1_190.0, atEnd = false, nowMillis = 1_016))
+        tracker.released()
+        assertNull(tracker.offer(1_156.0, atEnd = false, nowMillis = 1_050))
+        assertEquals(ScrollDirection.Down, tracker.direction)
+    }
+
+    @Test
     fun scrollingWithoutTouchTracksAgainOnceTheResizeSettles() {
         val tracker = ScrollDirectionTracker()
         assertEquals(ScrollDirection.Down, tracker.offer(600.0, atEnd = false, nowMillis = 0))

@@ -78,6 +78,10 @@ class ScrollDirectionTracker(private val threshold: Double = 24.0, private val r
         fingerY = y
     }
 
+    fun released() {
+        dragDirection = null
+    }
+
     fun reset() {
         direction = ScrollDirection.Up
         anchor = 0.0
