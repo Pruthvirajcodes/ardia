@@ -307,6 +307,44 @@ test("a long run of squared katakana folds without overflowing the stack", () =>
   assert.deepEqual(chooseTextFragment({ selected: "zebra", before: "", after: "", pageText }), { start: "zebra" });
 });
 
+const intro = "An old protocol for documents.";
+const body = "The system was released by the university in the spring.";
+
+test("a heading with a glued edit link is linked, not its contents entry", () => {
+  const pageText = `Contents\nUsage\n\n${intro}\n\nUsageedit\n\n${body}`;
+  for (const [selected, after] of [["Usage", "[edit]"], ["Usage\n", body.slice(0, 48)]] as const) {
+    assert.deepEqual(chooseTextFragment({ selected, before: "", after, pageText }), { prefix: "documents.", start: "Usage" });
+  }
+});
+
+test("a heading with a glued edit link and its paragraph are found", () => {
+  const pageText = `${intro}\n\nUsageedit\n\n${body}`;
+  const fragment = chooseTextFragment({ selected: `Usage\n${body}`, before: "", after: "", pageText });
+  assert.equal(fragment?.start, "Usage");
+  assert.equal(fragment?.end, "in the spring.");
+});
+
+test("a glued heading that can't be told from a copy is no link, never the copy", () => {
+  const pageText = `${intro}\nUsageedit\n${body}\nUsage\n${body}`;
+  assert.equal(chooseTextFragment({ selected: `Usage\n${body}`, before: "", after: "", pageText }), null);
+});
+
+test("a copy doesn't win over the selection's own place inside a glued word", () => {
+  const pageText = `${intro}\nUsages vary.\nUsage`;
+  assert.equal(chooseTextFragment({ selected: "Usage", before: "", after: "(s) vary.", pageText }), null);
+});
+
+test("a longer line isn't a heading with a glued link", () => {
+  const pageText = `${intro}\nUsage guide\n${body}\nUsage\nThe system was released xby the university.`;
+  assert.equal(chooseTextFragment({ selected: `Usage\n${body}`, before: "", after: "", pageText }), null);
+});
+
+test("a double-clicked glued heading with nothing after it is linked only when it is the only copy", () => {
+  const glued = `${intro}\n\nUsageedit\n\n${body}`;
+  assert.deepEqual(chooseTextFragment({ selected: "Usage\n", before: "", after: "", pageText: glued }), { start: "Usage" });
+  assert.equal(chooseTextFragment({ selected: "Usage\n", before: "", after: "", pageText: `Contents\nUsage\n\n${glued}` }), null);
+});
+
 test("words split by a comma are words of their own", () => {
   assert.equal(chooseTextFragment({ selected: "world", before: "hello,", after: "", pageText: "hello,world" })?.start, "world");
 });
