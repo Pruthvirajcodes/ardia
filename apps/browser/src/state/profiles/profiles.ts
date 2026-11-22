@@ -74,7 +74,7 @@ export const createProfilesSlice: StateCreator<BrowserState, [], [], ProfilesSli
       const profiles = { ...s.profiles, [profile.id]: profile };
       const engine = engineProfile({ profiles }, profile.id);
       const bookmarks = ensureRoots(s.bookmarks, engine)[0];
-      if (!source) shareDownloadsWithNewProfile(get, engineProfile(s, s.settings.defaultProfileId), engine);
+      if (!source) shareDownloadsWithNewProfile(get, engine);
       set({ profiles, profileOrder: [...s.profileOrder, profile.id], bookmarks });
       return profile.id;
     },

@@ -10,11 +10,15 @@ const LOAD_MS = 15;
 let engine;
 let loads;
 let writes;
+let reads;
 
 const answer = (verb, profile, args) => {
   if (verb !== "settings" && verb !== "setSettings") return null;
   const current = engine.get(profile) ?? CHROME_DEFAULT;
-  if (verb === "settings") return current;
+  if (verb === "settings") {
+    reads.push(profile);
+    return current;
+  }
   if (current.managed) throw Object.assign(new Error("downloads are set by policy"), { code: "ERR_ENGINE" });
   const next = { ...current, ...args };
   engine.set(profile, next);
@@ -49,17 +53,23 @@ const { takeDownloadFolderCounts } = await import("../telemetry/downloadFolderCo
 const { useBrowser } = await import("../browser/store.ts");
 const { engineProfile } = await import("../browser/model.ts");
 const { engineProfiles } = await import("../profiles/engineProfiles.ts");
-const { setDownloadsFor, downloadFoldersDiffer, separateIfFoldersDiffer } = await import("../settings/paneData.ts");
+const { setDownloadsFor, downloadSettings, separateIfFoldersDiffer } = await import("../settings/paneData.ts");
 const { addLinkedProfile } = await import("../sync/profileLinks.ts");
 const { patchImport } = await import("../import/flow.ts");
 const { runImport } = await import("../import/runImport.ts");
 const { createProfile } = await import("../profiles/actions.ts");
+const { cached, load } = await import("../settings/resources.ts");
 const { DOWNLOAD_METHODS } = await import("../automation/socketDownloads.ts");
 
 const S = () => useBrowser.getState();
 const engineOf = (id) => engineProfile(S(), id);
 const automation = (name) => DOWNLOAD_METHODS.find((method) => method.name === name);
 const socketCall = { stillServing() {} };
+const shareTwo = async () => {
+  const work = createProfile({ name: "Work" });
+  await settled();
+  return work;
+};
 const settled = () => sleep(LOAD_MS * 4);
 const savesTo = async (id) => {
   await settled();
@@ -75,6 +85,7 @@ beforeEach(async () => {
   engine = new Map();
   loads = new Map();
   writes = [];
+  reads = [];
   S().hydrate({});
   assert.equal(S().settings.separateDownloadFolders, false);
   await setDownloadsFor(SHARED, engineProfiles(S()));
@@ -85,11 +96,6 @@ beforeEach(async () => {
 test("a new profile saves to the folder every profile shares, and asks as they do", async () => {
   const work = createProfile({ name: "Work" });
   assert.deepEqual(await savesTo(work), SHARED);
-});
-
-test("Settings › General opened while a new profile's engine is still loading finds one folder", async () => {
-  createProfile({ name: "Work" });
-  assert.equal(await downloadFoldersDiffer(engineProfiles(S())), false);
 });
 
 test("a profile that arrives by sync gets the shared folder", async () => {
@@ -110,7 +116,8 @@ test("a profile made by an import gets the shared folder", async () => {
 
 test("several profiles made at once all get the shared folder", async () => {
   const made = ["One", "Two", "Three"].map((name) => createProfile({ name }));
-  assert.equal(await downloadFoldersDiffer(engineProfiles(S())), false);
+  await separateIfFoldersDiffer(engineProfiles(S()), () => true);
+  assert.equal(S().settings.separateDownloadFolders, false);
   for (const id of made) assert.deepEqual(await savesTo(id), SHARED);
 });
 
@@ -246,4 +253,90 @@ test("a copy that began before sharing went on isn't counted", async () => {
   client.setSharing(true, "onboarding");
   await settled();
   assert.equal(takeDownloadFolderCounts().new_profile_downloads_shared, 0);
+});
+
+test("deleting the default profile before the copy reads it copies from the profile that became the default", async () => {
+  await shareTwo();
+  const side = createProfile({ name: "Side" });
+  S().deleteProfile("default");
+  assert.deepEqual(await savesTo(side), SHARED);
+});
+
+test("deleting the default profile while the copy reads it copies from the profile that became the default", async () => {
+  await shareTwo();
+  loads.set("", sleep(LOAD_MS));
+  const side = createProfile({ name: "Side" });
+  await sleep(1);
+  S().deleteProfile("default");
+  engine.delete("");
+  assert.deepEqual(await savesTo(side), SHARED);
+});
+
+test("a deleted source that no longer answers isn't a failed copy", async () => {
+  await shareTwo();
+  loads.set("", sleep(LOAD_MS).then(() => Promise.reject(Object.assign(new Error("profile not loaded"), { code: "ERR_ENGINE" }))));
+  const side = createProfile({ name: "Side" });
+  await sleep(1);
+  S().deleteProfile("default");
+  assert.deepEqual(await savesTo(side), SHARED);
+});
+
+test("Settings never caches what a new default profile had before the copy landed", async () => {
+  const work = createProfile({ name: "Work" });
+  S().setDefaultProfile(work);
+  await load(downloadSettings, [engineOf(work)]);
+  await settled();
+  const { folder, askWhereToSave } = cached(downloadSettings, [engineOf(work)]);
+  assert.deepEqual({ folder, askWhereToSave }, SHARED);
+});
+
+test("automation doesn't read a profile deleted while it waited", async () => {
+  const work = createProfile({ name: "Work" });
+  const workEngine = engineOf(work);
+  const read = automation("downloads.settings").run({ profile: work }, socketCall);
+  const refused = assert.rejects(read, /There's no profile/);
+  S().deleteProfile(work);
+  await refused;
+  assert.equal(reads.includes(workEngine), false);
+});
+
+test("automation doesn't write to a profile deleted while it waited", async () => {
+  const work = createProfile({ name: "Work" });
+  const workEngine = engineOf(work);
+  const write = automation("downloads.setSettings").run({ profile: work, folder: "/Users/someone/Scripted" }, socketCall);
+  const refused = assert.rejects(write, /There's no profile/);
+  S().deleteProfile(work);
+  await refused;
+  assert.equal(loads.has(workEngine), false);
+});
+
+test("automation doesn't write to a profile deleted while its settings were read", async () => {
+  const work = await shareTwo();
+  const workEngine = engineOf(work);
+  loads.set(workEngine, sleep(LOAD_MS));
+  writes = [];
+  const write = automation("downloads.setSettings").run({ profile: work, folder: "/Users/someone/Scripted" }, socketCall);
+  const refused = assert.rejects(write, /There's no profile/);
+  await sleep(1);
+  S().deleteProfile(work);
+  await refused;
+  assert.deepEqual(writes, []);
+});
+
+test("Settings doesn't write to a profile deleted while it waited", async () => {
+  const work = createProfile({ name: "Work" });
+  const workEngine = engineOf(work);
+  const write = setDownloadsFor({ folder: "/Users/someone/Chosen" }, [workEngine]);
+  S().deleteProfile(work);
+  await write;
+  assert.equal(loads.has(workEngine), false);
+});
+
+test("General doesn't load a profile deleted while it waited", async () => {
+  const work = createProfile({ name: "Work" });
+  const workEngine = engineOf(work);
+  const check = separateIfFoldersDiffer(["", workEngine], () => true);
+  S().deleteProfile(work);
+  await check;
+  assert.equal(loads.has(workEngine), false);
 });

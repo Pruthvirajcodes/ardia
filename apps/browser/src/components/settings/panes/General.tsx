@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { AppState, View } from "react-native";
-import type { DownloadSettings } from "../../../state/downloads/actions";
 import { setLaunchAtLogin } from "../../../state/app/appSettings";
 import { confirm, pickFolder } from "../../../state/app/system";
 import { Button, PopUp, Toggle } from "../../ui";
@@ -8,7 +7,7 @@ import { updateSettings } from "../../../state/settings/actions";
 import { currentEngineProfile } from "../../../state/browser/current";
 import { useProfiles, useSettings } from "../../../state/browser/hooks";
 import { Group, Row, SectionHeader } from "../Form";
-import { defaultBrowser, downloadSettings, loginItem, makeDefaultBrowser, separateIfFoldersDiffer, setDownloadsFor } from "../../../state/settings/paneData";
+import { defaultBrowser, downloadSettings, loginItem, makeDefaultBrowser, separateIfFoldersDiffer, setDownloadsForEveryProfile } from "../../../state/settings/paneData";
 import { useResource } from "../../../state/settings/resources";
 import { goToSettingsPane, openImport, SETTINGS_DETAIL, type SettingsPlace } from "../../../state/settings/settingsWindows";
 import { redoSetupFromSettings } from "../../../state/onboarding/redo";
@@ -160,15 +159,14 @@ function DownloadsSection() {
       live = false;
     };
   }, [separate, profileKey]);
-  const apply = (patch: Partial<Pick<DownloadSettings, "folder" | "askWhereToSave">>, targets = everyProfile) => void setDownloadsFor(patch, targets);
   const change = async () => {
     if (!current) return;
     const folder = await pickFolder(current.folder, "Use Folder");
-    if (folder) apply({ folder });
+    if (folder) void setDownloadsForEveryProfile({ folder });
   };
   const setSeparate = (on: boolean) => {
+    if (!on && current && !current.managed) void setDownloadsForEveryProfile({ folder: current.folder, askWhereToSave: current.askWhereToSave }, profile);
     updateSettings({ separateDownloadFolders: on });
-    if (!on && current && !current.managed) apply({ folder: current.folder, askWhereToSave: current.askWhereToSave }, everyProfile.filter((p) => p !== profile));
   };
   return (
     <>
@@ -184,7 +182,7 @@ function DownloadsSection() {
           <Toggle value={separate} accessibilityLabel="Separate folder for each profile" onChange={setSeparate} />
         </Row>
         <Row anchor="general.askWhereToSave">
-          <Toggle value={current?.askWhereToSave ?? false} disabled={locked} onChange={(v) => apply({ askWhereToSave: v })} />
+          <Toggle value={current?.askWhereToSave ?? false} disabled={locked} onChange={(v) => void setDownloadsForEveryProfile({ askWhereToSave: v })} />
         </Row>
       </Group>
     </>
