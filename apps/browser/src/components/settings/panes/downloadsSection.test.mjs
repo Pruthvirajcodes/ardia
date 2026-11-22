@@ -95,3 +95,43 @@ test("turning the switch off puts a profile added since General drew on the one 
   assert.equal(S().settings.separateDownloadFolders, false);
   page.unmount();
 });
+
+test("turning the switch off right after Ask where to save keeps what was just chosen", async () => {
+  S().createProfile({ name: "Work" });
+  await settled();
+  S().updateSettings({ separateDownloadFolders: true });
+  const page = await openDownloads();
+  const toggle = control(page, "general.separateDownloadFolders");
+  control(page, "general.askWhereToSave").onChange(true);
+  toggle.onChange(false);
+  await settled();
+  assert.deepEqual(asks(), [true, true]);
+  page.unmount();
+});
+
+test("turning the switch off copies the default profile's folder as it is when the write runs", async () => {
+  S().createProfile({ name: "Work" });
+  await settled();
+  S().updateSettings({ separateDownloadFolders: true });
+  const page = await openDownloads();
+  const toggle = control(page, "general.separateDownloadFolders");
+  engine.set("", { ...CHROME_DEFAULT, folder: "/Users/someone/Changed" });
+  toggle.onChange(false);
+  await settled();
+  assert.deepEqual(folders(), ["/Users/someone/Changed", "/Users/someone/Changed"]);
+  page.unmount();
+});
+
+test("turning the switch off and straight back on leaves each profile's own folder", async () => {
+  const work = S().createProfile({ name: "Work" });
+  await settled();
+  S().updateSettings({ separateDownloadFolders: true });
+  engine.set(work, { ...CHROME_DEFAULT, folder: "/Users/someone/Work" });
+  const page = await openDownloads();
+  const toggle = control(page, "general.separateDownloadFolders");
+  toggle.onChange(false);
+  toggle.onChange(true);
+  await settled();
+  assert.deepEqual(folders(), ["/Users/someone/Downloads", "/Users/someone/Work"]);
+  page.unmount();
+});

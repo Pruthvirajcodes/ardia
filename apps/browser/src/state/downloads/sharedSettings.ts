@@ -1,4 +1,4 @@
-import { getDownloadSettings, setDownloadSettings } from "../../platform/downloads";
+import { getDownloadSettings, setDownloadSettings, type DownloadSettings } from "../../platform/downloads";
 import { orWarn } from "../../lib/fallback";
 import type { BrowserState } from "../browser/store";
 import { engineProfile } from "../browser/model";
@@ -13,20 +13,24 @@ export function shareDownloadsWithNewProfile(get: () => Pick<BrowserState, "prof
   const defaultThen = engineProfile(before, before.settings.defaultProfileId);
   const existedBefore = engineProfiles(before);
   const exists = (engine: string) => engineProfiles(get()).includes(engine);
+  const wanted = () => !get().settings.separateDownloadFolders && exists(to);
   const sourceNow = () => {
     const { profiles, settings } = get();
-    if (settings.separateDownloadFolders || !exists(to)) return undefined;
     return [defaultThen, engineProfile({ profiles }, settings.defaultProfileId), ...existedBefore].find((engine) => existedBefore.includes(engine) && exists(engine));
   };
-  const share = async (): Promise<void> => {
+  const readShared = async (): Promise<DownloadSettings | null> => {
     const from = sourceNow();
-    if (from === undefined) return;
-    const shared = await getDownloadSettings(from).catch((error: unknown) => {
+    if (from === undefined) return null;
+    const read = await getDownloadSettings(from).catch((error: unknown) => {
       if (exists(from)) throw error;
       return null;
     });
-    if (!shared || !exists(from)) return share();
-    if (shared.managed || !shared.folder || sourceNow() === undefined) return;
+    return exists(from) ? read : ((await readShared()) ?? read);
+  };
+  const share = async () => {
+    if (!wanted()) return;
+    const shared = await readShared();
+    if (!shared?.folder || shared.managed || !wanted()) return;
     await setDownloadSettings({ folder: shared.folder, askWhereToSave: shared.askWhereToSave }, to);
     noteNewProfileDownloadsShared(consent);
   };

@@ -90,21 +90,27 @@ async function linux(run) {
         canonical = mergeSession(pair.base, pair.session, canonical);
         const replied = structuredClone(canonical);
         const reply = deliver(() => replied);
-        for (const other of hosts) other.hear(structuredClone({ base, session: canonical, sourceWindowId: id }));
+        for (const other of hosts) other.hear(structuredClone({ base: other === host ? pair.session : base, session: canonical, sourceWindowId: id }));
         return reply;
       },
     };
     hosts.push(host);
     const persistence = renderer.startHostPersistence(host, renderer.useBrowser, structuredClone(initial));
-    renderer.setDownloadTurns(renderer.linuxDownloadTurns(locks, host, persistence.flush));
-    renderers[id] = { ...renderer, persistence, S: () => renderer.useBrowser.getState() };
+    const turns = renderer.linuxDownloadTurns(locks, host, persistence.flush);
+    renderer.setDownloadTurns(turns);
+    const stopPublishing = renderer.publishSwitchInTurn(renderer.useBrowser, turns);
+    renderers[id] = { ...renderer, persistence, stopPublishing, S: () => renderer.useBrowser.getState() };
   }
   try {
     await run(renderers);
     assert.equal(locks.names.size, 1, "every renderer waits on the same lock");
   } finally {
+    for (const renderer of Object.values(renderers)) await renderer.inDownloadTurn(async () => {});
     await sleep(LOAD_MS * 6);
-    for (const renderer of Object.values(renderers)) renderer.persistence();
+    for (const renderer of Object.values(renderers)) {
+      renderer.stopPublishing();
+      renderer.persistence();
+    }
   }
 }
 
@@ -125,7 +131,7 @@ test("General in the Settings renderer waits for profiles another window is stil
 test("a folder picked in the Settings renderer reaches a profile another window just made and hasn't published", () =>
   linux(async ({ browser, settings }) => {
     const work = browser.S().createProfile({ name: "Work" });
-    await sleep(LOAD_MS * 4);
+    await browser.inDownloadTurn(async () => {});
     await settings.setDownloadsForEveryProfile({ folder: "/home/me/Picked" });
     assert.equal(folderOf(work), "/home/me/Picked");
   }));
@@ -135,7 +141,7 @@ test("a folder picked while another window's copy waits is the one the new profi
     const picked = settings.setDownloadsForEveryProfile({ folder: "/home/me/Picked" });
     const work = browser.S().createProfile({ name: "Work" });
     await picked;
-    await sleep(LOAD_MS * 4);
+    await browser.inDownloadTurn(async () => {});
     assert.equal(folderOf(work), "/home/me/Picked");
   }));
 
@@ -154,11 +160,29 @@ test("a profile made right after Settings turned the switch off still gets the s
     await settings.persistence.flush();
     await sleep(BUSY_MS.settings * 3);
     assert.equal(browser.S().settings.separateDownloadFolders, true);
-    const applied = settings.setDownloadsForEveryProfile({ folder: SHARED });
+    settings.setSeparateDownloadFolders(false);
+    const work = browser.S().createProfile({ name: "Work" });
+    await browser.inDownloadTurn(async () => {});
+    assert.equal(folderOf(work), SHARED);
+  }));
+
+test("turning the switch on in Settings reaches another window before it copies to a profile made there right after", () =>
+  linux(async ({ browser, settings }) => {
+    settings.setSeparateDownloadFolders(true);
+    const work = browser.S().createProfile({ name: "Work" });
+    await browser.inDownloadTurn(async () => {});
+    assert.equal(folderOf(work), CHROME_DEFAULT.folder);
+    assert.equal(browser.S().settings.separateDownloadFolders, true);
+  }));
+
+test("turning the switch off from anywhere reaches another window before it skips a profile made there right after", () =>
+  linux(async ({ browser, settings }) => {
+    settings.S().updateSettings({ separateDownloadFolders: true });
+    await settings.persistence.flush();
+    await sleep(BUSY_MS.settings * 3);
     settings.S().updateSettings({ separateDownloadFolders: false });
     const work = browser.S().createProfile({ name: "Work" });
-    await applied;
-    await sleep(LOAD_MS * 4);
+    await browser.inDownloadTurn(async () => {});
     assert.equal(folderOf(work), SHARED);
   }));
 

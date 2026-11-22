@@ -1,4 +1,5 @@
 import type { DownloadTurns } from "../../browser/src/state/downloads/downloadTurns";
+import type { useBrowser } from "../../browser/src/state/browser/store";
 import type { ArdiaHost } from "./host";
 import { invokeHost, reportHostError } from "./host.ts";
 
@@ -16,4 +17,9 @@ export const linuxDownloadTurns = (locks: Locks, host: ArdiaHost, publishSession
     } finally {
       await publishSession().catch(report);
     }
+  });
+
+export const publishSwitchInTurn = (store: Pick<typeof useBrowser, "subscribeTo">, turns: DownloadTurns, report: (error: unknown) => void = reportHostError) =>
+  store.subscribeTo(["settings"], (state, previous) => {
+    if (state.settings.separateDownloadFolders !== previous.settings.separateDownloadFolders) turns(async () => {}).catch(report);
   });

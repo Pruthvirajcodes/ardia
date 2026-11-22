@@ -54,7 +54,7 @@ import { followExtensionChanges, settingsShowsExtensions } from "./utilityExtens
 import { refreshExtensionsAfterChange } from "../../browser/src/state/extensions/actions";
 import { provideNativeModuleProvider, requireNativeModule } from "./shims/expo-modules-core";
 import { setDownloadTurns } from "../../browser/src/state/downloads/downloadTurns";
-import { linuxDownloadTurns } from "./hostDownloadTurns";
+import { linuxDownloadTurns, publishSwitchInTurn } from "./hostDownloadTurns";
 import { setHostPageHooks } from "./hostPageHooks";
 import { applyHostPageTheme, forgetDepartedPage, resetHostPage } from "./hostPageLifecycle";
 import { setPopupDismissal } from "./popupDismissal";
@@ -117,7 +117,8 @@ async function start() {
   const launch = ardiaHost.bootstrap.startup !== false;
   const restoreSession = launch ? configRestoreSession() : undefined;
   setStoreBatching(unstable_batchedUpdates);
-  setDownloadTurns(linuxDownloadTurns(navigator.locks, ardiaHost, flushLinuxSession));
+  const downloadTurns = linuxDownloadTurns(navigator.locks, ardiaHost, flushLinuxSession);
+  setDownloadTurns(downloadTurns);
   hydrateLaunchSession(saved, initialLinuxSession(ardiaHost, saved?.settings && restoreSession !== undefined ? { ...saved, settings: { ...saved.settings, restoreSession } } : saved));
   followDesktopButtonLayout(ardiaHost);
   startWindowButtonStyle();
@@ -183,6 +184,7 @@ async function start() {
     });
     void noticeUnsandboxedLaunch(ardiaHost, windowId, services.launch);
   }
+  publishSwitchInTurn(useBrowser, downloadTurns);
   createRoot(document.getElementById("root")!, { onUncaughtError: (error) => { reportUncaughtRender(error); console.error("[ardia linux] crashed", error); }, onRecoverableError: (error) => { reportRecoverableRender(error); console.warn("[ardia linux] recovered", error); } }).render(
     <div className={`ardia-desktop host ardia-linux${utility ? " utility" : ""}`} data-ardia-linux-window={windowId}>
       <div className="ardia-window">

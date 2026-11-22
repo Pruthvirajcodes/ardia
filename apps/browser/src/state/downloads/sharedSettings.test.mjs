@@ -281,6 +281,33 @@ test("a deleted source that no longer answers isn't a failed copy", async () => 
   assert.deepEqual(await savesTo(side), SHARED);
 });
 
+test("deleting the only other profile while the copy reads it keeps what was read", async () => {
+  loads.set("", sleep(LOAD_MS));
+  const work = createProfile({ name: "Work" });
+  await sleep(1);
+  S().deleteProfile("default");
+  assert.deepEqual(await savesTo(work), SHARED);
+});
+
+test("what was read isn't applied once the switch is on", async () => {
+  loads.set("", sleep(LOAD_MS));
+  const work = createProfile({ name: "Work" });
+  await sleep(1);
+  S().deleteProfile("default");
+  S().updateSettings({ separateDownloadFolders: true });
+  assert.deepEqual(await savesTo(work), UNTOUCHED);
+});
+
+test("what was read isn't applied to a profile deleted meanwhile", async () => {
+  loads.set("", sleep(LOAD_MS));
+  const work = createProfile({ name: "Work" });
+  const workEngine = engineOf(work);
+  await sleep(1);
+  S().deleteProfile(work);
+  await settled();
+  assert.equal(loads.has(workEngine), false);
+});
+
 test("Settings never caches what a new default profile had before the copy landed", async () => {
   const work = createProfile({ name: "Work" });
   S().setDefaultProfile(work);

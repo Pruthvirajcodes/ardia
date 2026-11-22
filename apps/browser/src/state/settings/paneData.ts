@@ -161,8 +161,20 @@ const writeDownloads = (patch: DownloadsPatch, profiles: string[]) =>
 
 export const setDownloadsFor = (patch: DownloadsPatch, profiles: string[]) => inDownloadTurn(() => writeDownloads(patch, stillExisting(profiles)));
 
-export const setDownloadsForEveryProfile = (patch: DownloadsPatch, except?: string) =>
-  inDownloadTurn(() => writeDownloads(patch, engineProfiles(useBrowser.getState()).filter((p) => p !== except)));
+export const setDownloadsForEveryProfile = (patch: DownloadsPatch) => inDownloadTurn(() => writeDownloads(patch, engineProfiles(useBrowser.getState())));
+
+const copyDefaultToEveryProfile = async () => {
+  if (currentSettings().separateDownloadFolders) return;
+  const from = defaultProfile();
+  const shared = await getDownloadSettings(from).catch(orWarn(null));
+  if (!shared?.folder || shared.managed || currentSettings().separateDownloadFolders) return;
+  await writeDownloads({ folder: shared.folder, askWhereToSave: shared.askWhereToSave }, engineProfiles(useBrowser.getState()).filter((p) => p !== from));
+};
+
+export function setSeparateDownloadFolders(on: boolean) {
+  if (!on) void inDownloadTurn(copyDefaultToEveryProfile);
+  useBrowser.getState().updateSettings({ separateDownloadFolders: on });
+}
 
 export function setUpdaterPrefs(patch: { automaticChecks?: boolean; automaticDownloads?: boolean; channel?: UpdateChannel }) {
   const state = cached(updater, []);
