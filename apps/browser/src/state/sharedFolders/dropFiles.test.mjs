@@ -59,7 +59,7 @@ const { startPersistence } = await import("../session/persist.ts");
 const { resolveDrop } = await import("../drag/drops.ts");
 const { beginTabDrag, endTabDrag, setInsertResolver, updateTabDrag } = await import("../drag/tabDrag.ts");
 const { guardGroupClose, keepGroupsOpen } = await import("../groups/closeGuard.ts");
-const { dropTabIntoSplit, dropTabOnRow } = await import("../splits/actions.ts");
+const { dropTabIntoSplit, dropTabOnRow, openLinkInSplit } = await import("../splits/actions.ts");
 const { chromeChanged } = await import("../tabs/liveTabs.ts");
 const { bindFolder, boundFolders, sharedFolderOf, unbindFolder } = await import("./store.ts");
 const { confirmRemovingShared, sharedFolderOfGroup } = await import("./removal.ts");
@@ -200,4 +200,76 @@ test("a window's last tab dropped in another window's tab strip takes its folder
   endTabDrag();
   await afterwards(f, f.before);
   assert.equal(S().tabs[f.id.only].windowId, away);
+});
+
+async function tornOff(names) {
+  const f = await shared(names);
+  const other = S().newTab(f.w, { url: `https://other${runs}.example/`, background: true });
+  S().groupTabs([other], { pinned: true, name: "Other" });
+  useBrowser.setState((s) => ({ windows: Object.fromEntries(Object.entries(s.windows).map(([id, w]) => [id, { ...w, frame: [0, 0, 800, 600] }])) }));
+  const tab = f.id[names[0]];
+  beginTabDrag(tab, [tab]);
+  updateTabDrag(3000, 300);
+  endTabDrag();
+  await f.sync();
+  const away = S().tabs[tab].windowId;
+  assert.notEqual(away, f.w);
+  assert.deepEqual(f.files(), f.before);
+  const groupNamed = (name) => Object.values(S().groups).find((g) => g.windowId === away && g.name === name);
+  return { f, tab, team: groupNamed("Team"), other: groupNamed("Other") };
+}
+
+for (const names of [["only"], ["alpha", "beta"]]) {
+  for (const [where, spotOf] of [
+    ["into Pinned above the folder", ({ team }) => ({ zone: "pinnedRows", beforeId: team.tabIds[0] })],
+    ["into Top Apps", () => ({ zone: "tiles", beforeId: null })],
+    ["into another pinned folder", ({ other }) => ({ zone: "group", groupId: other.id, beforeId: null })],
+    ["back into the folder", ({ team }) => ({ zone: "group", groupId: team.id, beforeId: null })],
+  ]) {
+    test(`a torn-off copy of one of ${names.length} links dragged ${where} changes no file and keeps the folder shared`, async () => {
+      const t = await tornOff(names);
+      dropTab([t.tab], spotOf(t));
+      await afterwards(t.f, t.f.before);
+    });
+  }
+
+  test(`a torn-off copy of one of ${names.length} links added to Top Apps changes no file and keeps the folder shared`, async () => {
+    const t = await tornOff(names);
+    S().pinTabs([t.tab], true, false);
+    await afterwards(t.f, t.f.before);
+  });
+}
+
+test("an Empty Folder row that was clicked still can't be dragged out", async () => {
+  const f = await shared(["only"]);
+  dropTab([f.id.only], LIST);
+  await f.sync();
+  const row = S().groups[f.team].tabIds[0];
+  S().activate(row);
+  dropTab([row], LIST);
+  await afterwards(f, []);
+  assert.deepEqual(S().groups[f.team].tabIds, [row]);
+});
+
+test("a pinned tab dropped on a split leaves the split's shared link in its folder", async () => {
+  const f = await shared(["only"]);
+  const pinnedRow = (name) => {
+    const id = S().newTab(f.w, { url: `https://${name}${runs}.example/`, background: true });
+    S().pinTabs([id], true, true);
+    return id;
+  };
+  const first = pinnedRow("first");
+  const second = pinnedRow("second");
+  openLinkInSplit(first, `https://split${runs}.example/`);
+  const link = Object.values(S().tabs).find((tab) => tab.url === `https://split${runs}.example/`).id;
+  dropTab([link], { zone: "group", groupId: f.team, beforeId: null });
+  await f.sync();
+  dropTab([f.id.only], LIST);
+  await f.sync();
+  const files = f.files();
+  assert.equal(files.length, 1);
+  assert.ok(S().groups[f.team].tabIds.includes(link));
+  dropTabOnRow(second, first, "right");
+  await afterwards(f, files);
+  assert.ok(S().groups[f.team].tabIds.includes(link));
 });

@@ -8,7 +8,7 @@ import { crossesLane } from "./lanes";
 import { choose } from "../settings/settings";
 import { activated, apply, removeTabs, withNewTab } from "../tabs/tabs";
 import type { AdoptId, BrowserWindow, SplitSlot, SplitView, Tab } from "../browser/types";
-import { withEmptiedFoldersKept } from "../groups/emptyFolder";
+import { outsideKeptFolders, withEmptiedFoldersKept } from "../groups/emptyFolder";
 
 export type SplitsSlice = {
   splits: Record<string, SplitView>;
@@ -162,7 +162,7 @@ export function sanitizeSplits(splits: Record<string, SplitView>, tabs: Record<s
 }
 
 function gatherPinned(s: BrowserState, anchorId: string, members: string[]): BrowserState {
-  const newcomers = members.filter((id) => id !== anchorId && s.tabs[id] && !isPinnedRow(s.tabs[id]));
+  const newcomers = outsideKeptFolders(s, members).filter((id) => id !== anchorId && s.tabs[id] && !isPinnedRow(s.tabs[id]));
   const settled = (splitTabIdsOf(splitOf(s, anchorId)) ?? []).filter((id) => !newcomers.includes(id) && isPinnedRow(s.tabs[id]));
   if (!newcomers.length || settled.length < 2) return s;
   const next = placing(s, newcomers, { pinned: true, row: true, beforeId: anchorId });

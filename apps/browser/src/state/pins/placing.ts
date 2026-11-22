@@ -8,6 +8,7 @@ import type { BrowserWindow, TabPin, TileFolder } from "../browser/types";
 import { pinnedGroupMembers } from "../browser/structure";
 import { pinHome } from "./pinHomes";
 import { tileFolderOf } from "./tileFolders";
+import { apartFromKeptFolderLink } from "../groups/emptyFolder";
 
 export type TabPlacement = {
   pinned: boolean;
@@ -41,7 +42,8 @@ export function placing(s: BrowserState, ids: string[], p: TabPlacement): Browse
   };
   const intoPinnedGroup = target?.pinned ? target.id : null;
   for (const id of moving) {
-    const t = tabs[id]!;
+    const t = p.pinned || intoPinnedGroup ? apartFromKeptFolderLink(s, tabs[id]!, intoPinnedGroup) : tabs[id]!;
+    tabs[id] = t;
     const flips = !!t.pin !== p.pinned;
     const row = p.pinned && (paired.has(id) || (p.row ?? isPinnedRow(t)));
     const folder = p.pinned && !row ? (p.tileFolder === undefined ? tileFolderOf(t) : (p.tileFolder ?? undefined)) : undefined;
