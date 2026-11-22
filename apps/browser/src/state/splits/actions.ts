@@ -62,7 +62,7 @@ export function openLinkInSplit(sourceTabId: string, url: string, adoptId?: Adop
 
 export function dropTabIntoSplit(tabId: string, targetTabId: string, side: SplitSide): string | null {
   const target = store().tabs[targetTabId];
-  if (!target || tabId === targetTabId) return null;
+  if (!target || tabId === targetTabId || !withoutEmptyFolderRows(store(), [tabId]).length) return null;
   return openSplitPane(target.windowId, { tabId, anchorTabId: targetTabId, side });
 }
 
@@ -72,7 +72,7 @@ export function dropTabOnRow(tabId: string, rowTabId: string, side: "left" | "ri
   const s = store();
   const tab = s.tabs[tabId];
   const row = s.tabs[rowTabId];
-  if (!tab || !row || !splitsOnRow(s, tabId, rowTabId) || !withoutEmptyFolderRows(s, [tabId]).length) return null;
+  if (!tab || !row || !splitsOnRow(s, tabId, rowTabId)) return null;
   const split = splitOf(s, rowTabId);
   const panes = splitTabIdsOf(split);
   if (panes?.includes(tabId)) return null;

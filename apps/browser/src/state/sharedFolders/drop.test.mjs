@@ -12,6 +12,8 @@ const { dropTabsOutside } = await import("../drag/windowDrop.ts");
 const { bindFolder } = await import("./store.ts");
 const { confirmRemovingShared, sharedFolderOfGroup } = await import("./removal.ts");
 const { folderPlace } = await import("./engine.ts");
+const { dropTabIntoSplit } = await import("../splits/actions.ts");
+const { dropTabsInProfile } = await import("../browser/actions.ts");
 const { knownNames, localFolder } = await import("./local.ts");
 const { foreignWriteHooks } = await import("../browser/foreignWriteHooks.ts");
 const { devTabPresses } = await import("../telemetry/tabPresses.ts");
@@ -269,5 +271,50 @@ test("dragging a link out of a ⌘-click shared folder leaves its subfolder, and
   assert.equal(S().groups[docs].parentId, f.team);
   assert.deepEqual(S().groups[f.team].tabIds, [f.ids[1]]);
   assert.deepEqual(entries(), before, "the sync engine sees the same Docs and nothing at the root");
+  staysShared(f);
+});
+
+function emptied() {
+  const f = sidebar();
+  dropTab(f.ids[0], { zone: "list", beforeId: null });
+  return { ...f, row: S().groups[f.team].tabIds[0] };
+}
+
+test("the Empty Folder row can't be dropped on the page as a split", () => {
+  const f = emptied();
+  dropTabIntoSplit(f.row, f.home, "right");
+  assert.deepEqual(S().groups[f.team].tabIds, [f.row]);
+  assert.equal(Object.values(S().splits).length, 0);
+});
+
+test("the Empty Folder row can't be dragged out into a window of its own", () => {
+  const f = emptied();
+  useBrowser.setState((s) => ({ windows: { ...s.windows, [f.w]: { ...s.windows[f.w], frame: [0, 0, 800, 800] } } }));
+  const windows = Object.keys(S().windows).length;
+  dropTabsOutside([f.row], f.w, 2000, 300);
+  assert.equal(Object.keys(S().windows).length, windows);
+  assert.deepEqual(S().groups[f.team].tabIds, [f.row]);
+});
+
+test("the Empty Folder row on another profile's icon asks nothing", async (t) => {
+  const asked = answering(t, true);
+  const f = emptied();
+  S().updateSettings({ warnBeforeMovingTabsToProfile: true });
+  const to = S().createProfile({ name: "Icon" });
+  await dropTabsInProfile([f.row], to, { type: "none" }, f.profileId, true);
+  assert.deepEqual(asked, []);
+  assert.deepEqual(S().groups[f.team].tabIds, [f.row]);
+});
+
+test("a kept folder keeps its subfolder while another nested group exists", () => {
+  const f = sidebar({ links: 2 });
+  const inside = S().newTab(f.w, { url: `https://inside${runs}.example/`, background: true });
+  const outer = S().groupTabs([f.other, inside], { pinned: false, name: "Outer" });
+  const inner = S().groupTabs([inside], { name: "Inner" });
+  assert.equal(S().groups[inner].parentId, outer, "setup: an unrelated nested group");
+  const docs = S().groupTabs([f.ids[1]], { name: "Docs" });
+  useBrowser.setState((s) => ({ groups: { ...s.groups, [f.team]: { ...s.groups[f.team], autoUngroup: true } } }));
+  dropTab(f.ids[0], { zone: "list", beforeId: null });
+  assert.equal(S().groups[docs].parentId, f.team);
   staysShared(f);
 });
