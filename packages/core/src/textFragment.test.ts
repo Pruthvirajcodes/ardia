@@ -20,7 +20,7 @@ function highlighted(link: string, pageText: string): { from: number; text: stri
   const wordy = (i: number) => /[\p{L}\p{N}_]/u.test(page[i] ?? "");
   const dense = (i: number) => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(page[i] ?? "");
   const joins = (i: number) => /[.':]/.test(page[i] ?? "") && wordy(i - 1) && wordy(i + 1);
-  const edge = (i: number) => dense(i - 1) || dense(i) || !((wordy(i - 1) && wordy(i)) || joins(i - 1) || joins(i));
+  const edge = (i: number) => dense(i - 1) !== dense(i) || !((wordy(i - 1) && wordy(i)) || joins(i - 1) || joins(i));
   const matches = (term: string, i: number, startsWord: boolean, endsWord: boolean) => {
     if (!page.startsWith(term, i) || (startsWord && !edge(i)) || (endsWord && !edge(i + term.length))) return false;
     for (let k = i + 1; k < i + term.length; k++) if (breaks.has(k)) return false;
@@ -171,10 +171,52 @@ for (const [what, c] of Object.entries<Case>({
   test(`Chromium's matching: ${what}`, () => void assertHighlights(c));
 }
 
-test("a selection inside a dotted word widens to the word, which is what a browser can match", () => {
+test("a selection inside a dotted word stays the selection, held by the suffix", () => {
   const pageText = "Visit example.com for info.\nFor example, see below.";
   const fragment = chooseTextFragment({ selected: "example", before: "Visit ", after: ".com for info.", pageText });
-  assert.equal(highlighted(withTextFragment("https://example.com/", fragment!), pageText)?.text, "example.com");
+  assert.equal(fragment?.start, "example");
+  assert.ok(fragment?.suffix?.startsWith(".com"));
+  assert.equal(highlighted(withTextFragment("https://example.com/", fragment!), pageText)?.from, 6);
+});
+
+test("a decimal's first digit needs the rest as its suffix", () => {
+  const fragment = chooseTextFragment({ selected: "3", before: "Pi is ", after: ".14 today.", pageText: "Pi is 3.14 today.\nThere are 3 apples." });
+  assert.equal(fragment?.start, "3");
+  assert.ok(fragment?.suffix?.startsWith(".14"));
+});
+
+test("a range that ends before a possessive takes it as the suffix", () => {
+  const selected = "The long and detailed report that the committee published last week was written by Alice";
+  const fragment = chooseTextFragment({ selected, before: "", after: "'s team.", pageText: `Intro.\n${selected}'s team.` });
+  assert.equal(fragment?.end, "written by Alice");
+  assert.ok(fragment?.suffix?.startsWith("'s"));
+});
+
+test("words split by a comma are words of their own", () => {
+  assert.equal(chooseTextFragment({ selected: "world", before: "hello,", after: "", pageText: "hello,world" })?.start, "world");
+});
+
+test("a character inside an unspaced run is linked only with what precedes it", () => {
+  const fragment = chooseTextFragment({ selected: "京", before: "東", after: "", pageText: "東京" });
+  assert.deepEqual(fragment, { prefix: "東", start: "京" });
+});
+
+test("letters Chromium searches alike are seen as an earlier match", () => {
+  for (const [above, selected] of [["cœur", "coeur"], ["Øresund", "Oresund"]] as const) {
+    const fragment = chooseTextFragment({ selected, before: "", after: "", pageText: `${above}\n${selected}` });
+    assert.ok(!fragment || fragment.prefix || fragment.suffix, `${above} would match first`);
+  }
+});
+
+test("a selection past the page text's cap isn't taken for the copy that was read", () => {
+  const pageText = `Read the manual.\n${"x".repeat(3_000_000)}`.slice(0, 3_000_000);
+  assert.equal(chooseTextFragment({ selected: "manual", before: "Open the ", after: " here.", pageText }), null);
+});
+
+test("a whole paragraph isn't taken for the same words inside another line", () => {
+  const selected = "the launch is planned for June.";
+  const pageText = `Summary: ${selected}\nthe launch* is planned for June.`;
+  assert.equal(chooseTextFragment({ selected, before: "", after: "", pageText }), null);
 });
 
 test("a range whose last words also end an earlier line is exact, or isn't made", () => {
