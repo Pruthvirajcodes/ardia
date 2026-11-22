@@ -29,6 +29,12 @@ function keysInUse(s: BrowserState) {
   return keys;
 }
 
+function forgetClosedPages(state: ScopeState, baseTab: (key: string) => OpenTabValue | null) {
+  const seen = pagesSeenIn(state);
+  let inUse: Set<string> | null = null;
+  for (const key of seen.keys()) if (!baseTab(key) && !(inUse ??= keysInUse(store())).has(key)) seen.delete(key);
+}
+
 function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCloses, base: (key: string) => unknown, remote: (key: string) => unknown): Extraction {
   const s = store();
   const { synced, pinned } = localOpenTabs(s, profileId);
@@ -40,8 +46,7 @@ function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCl
     if (tab === undefined) baseTabs.set(key, (tab = openTabValue(base(`${OPEN_TAB}${key}`))));
     return tab;
   };
-  let inUse: Set<string> | null = null;
-  for (const key of seen.keys()) if (!baseTab(key) && !(inUse ??= keysInUse(s)).has(key)) seen.delete(key);
+  forgetClosedPages(state, baseTab);
   const positions = new Map<string, string>();
   for (const w of new Set(synced.map(({ tab }) => tab.windowId))) {
     const here = synced.filter(({ tab }) => tab.windowId === w);
@@ -96,7 +101,8 @@ function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCl
   };
 }
 
-function closesOnly(closes: OpenTabCloses): Extraction | null {
+function closesOnly(state: ScopeState, closes: OpenTabCloses, base: (key: string) => unknown): Extraction | null {
+  forgetClosedPages(state, (key) => openTabValue(base(`${OPEN_TAB}${key}`)));
   const closed = new Set(closes.keys());
   if (!closed.size) return null;
   const isClosed = (k: string) => k.startsWith(OPEN_TAB) && closed.has(k.slice(OPEN_TAB.length));
@@ -189,7 +195,7 @@ export function openTabsAdapters(profileId: string, state: ScopeState, mode: Ope
   if (switchedLater(state, false, flag())) return [waiting];
   settleCloses(profileId, state, closes);
   const off = () => switchedLater(state, false, flag());
-  if (!holdsOpenTabs(store(), profileId)) return [{ prefix: OPEN_TABS, extract: () => (off() ? null : closesOnly(closes)), apply: () => false }];
+  if (!holdsOpenTabs(store(), profileId)) return [{ prefix: OPEN_TABS, extract: (base) => (off() ? null : closesOnly(state, closes, base)), apply: () => false }];
   bringBackMissing(profileId, state, new Set(closes.keys()));
   return [
     {

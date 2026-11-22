@@ -3,7 +3,8 @@ import { test } from "node:test";
 const { useBrowser } = await import("../browser/store.ts");
 const { Clock, emptyScope, syncScope } = await import("@ardia/sync");
 const { openTabsAdapters } = await import("./openTabs.ts");
-const { openTabsClosed, recordOpenTabCloses } = await import("./openTabCloses.ts");
+const { noteTabClosedByUser, openTabsClosed, recordOpenTabCloses } = await import("./openTabCloses.ts");
+const { holdsOpenTabs } = await import("./openTabsLocal.ts");
 const { openTabCloses } = await import("./scopeAdapters.ts");
 const { profileScope } = await import("./records.ts");
 
@@ -234,4 +235,70 @@ test("a parked pin keeps its page and publishes the page it is on once unpinned"
   S().updateTab(id, { url: page("inbox") });
   await d.sync();
   assert.equal(d.published(id), page("inbox"));
+});
+
+test("closes published while the profile has no window leave no page behind", async () => {
+  const d = start();
+  const ids = [d.open("mail"), d.open("docs")];
+  await d.sync();
+  d.edit(() => S().closeTabs(ids));
+  d.edit(() => S().closeWindow(d.windowId));
+  assert.equal(holdsOpenTabs(S(), P), false);
+  await d.sync();
+  assert.deepEqual(ids.map(d.published), [null, null]);
+  assert.deepEqual([...d.pages], [[d.kept, page("keep")]], "only the tab that is still published keeps its page");
+});
+
+test("a close whose write failed while the profile has no window leaves no page behind after the retry", async () => {
+  const d = start();
+  await d.sync();
+  d.edit(() => {
+    noteTabClosedByUser(d.kept);
+    S().closeWindow(d.windowId);
+  });
+  assert.equal(holdsOpenTabs(S(), P), false);
+  d.failing.add("write");
+  await assert.rejects(d.sync(), /write failed/);
+  d.failing.clear();
+  await d.sync();
+  assert.equal(d.published(d.kept), null);
+  assert.equal(d.pages.size, 0);
+});
+
+test("with no window for the profile, a parked pin and a tab in another profile's window keep their pages", async () => {
+  const d = start();
+  const other = S().createProfile({ name: "Other" });
+  const otherWindow = S().createWindow({ profileId: other });
+  const [parked, moved, closed] = ["mail", "docs", "news"].map(d.open);
+  await d.sync();
+  d.edit(() => S().pinTabs([parked], true));
+  await d.sync();
+  d.edit(() => S().moveTabToProfile(moved, other, { background: true }));
+  d.edit(() => S().moveTabsToWindow([moved], otherWindow, { background: true }));
+  d.edit(() => S().closeTab(closed));
+  d.edit(() => S().closeWindow(d.windowId));
+  assert.equal(holdsOpenTabs(S(), P), false);
+  await d.sync();
+  await d.sync();
+  assert.deepEqual([parked, moved, closed].map(d.published), [null, null, null]);
+  assert.deepEqual([...d.pages.keys()].sort(), [d.kept, parked, moved].sort());
+});
+
+test("a tab that left while the profile had no window still sends its own page when it comes back pinned", async () => {
+  const d = start();
+  const other = S().createProfile({ name: "Other" });
+  const otherWindow = S().createWindow({ profileId: other });
+  const id = d.open("mail");
+  const leave = () => {
+    S().moveTabToProfile(id, other, { background: true });
+    S().moveTabsToWindow([id], otherWindow, { background: true });
+    S().closeWindow(d.windowId);
+    assert.equal(holdsOpenTabs(S(), P), false);
+  };
+  const back = () => {
+    const windowId = S().createWindow({ profileId: P });
+    S().moveTabsToWindow([id], windowId, { background: true });
+    S().moveTabToProfile(id, P, { background: true });
+  };
+  await comesBackPinned(d, id, leave, back);
 });
