@@ -3527,6 +3527,8 @@ const CONTEXT_CHARS = 200;
 const CAPPED_CONTEXT_CHARS = 48;
 const PAGE_TEXT_CAP = 3_000_000;
 const MAX_SCORING_WORK = 3_000_000;
+const MATCH_COST = 16;
+const MAX_SCANNED_CHARS = 2 * CONTEXT_CHARS;
 const CHUNK_CHARS = 32_768;
 
 const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\u30fc\uff70]/u;
@@ -3544,7 +3546,12 @@ function mapChunks(text        , map                           )         {
   const out           = [];
   for (let from = 0; from < text.length; ) {
     let to = from + CHUNK_CHARS;
-    while (to < text.length && /[\s\ud800-\udbff]/.test(text[to - 1] )) to++;
+    if (to < text.length) {
+      const uncuttable = /[\s\ud800-\udbff]*/y;
+      uncuttable.lastIndex = to - 1;
+      uncuttable.exec(text);
+      to = Math.min(text.length, uncuttable.lastIndex + 1);
+    }
     out.push(map(text.slice(from, to)));
     from = to;
   }
@@ -3559,6 +3566,12 @@ const collapsed = (raw        ) =>
       .replace(/[ \n]{2,}/g, "\n"),
   ).trim();
 
+function hiraganaOf(katakana        )         {
+  const codes = new Array        (katakana.length);
+  for (let i = 0; i < katakana.length; i++) codes[i] = katakana.charCodeAt(i) - 0x60;
+  return String.fromCharCode.apply(null, codes);
+}
+
 function looselyFolded(text        )         {
   return mapChunks(text, (chunk) => {
     const lower = chunk.toLowerCase().replace(/\n/g, " ").replace(/ {2,}/g, " ");
@@ -3572,14 +3585,9 @@ function looselyFolded(text        )         {
       .replace(/[“”״]/g, '"')
       .replace(FOLDABLE, (char) => FOLDS[char] )
       .replace(/[\u0660-\u0669\u06f0-\u06f9]/g, (digit) => String(digit.charCodeAt(0) & 15))
-      .replace(/[\u30a1-\u30f6]/g, (kana) => String.fromCharCode(kana.charCodeAt(0) - 0x60))
+      .replace(/[\u30a1-\u30f6]+/g, hiraganaOf)
       .replace(/\s{2,}|[^\S ]/g, " ");
   });
-}
-
-function pageOf(raw        )       {
-  const text = collapsed(raw);
-  return { text, key: looselyFolded(text) };
 }
 
 const isWordChar = (char                    ) => !!char && WORD_CHAR.test(char) && !UNSPACED.test(char);
@@ -3636,7 +3644,7 @@ const sameLetter = (a        , b        ) => a === b || a.toLowerCase() === b.to
 
 function sharedBefore(text        , at        , context        )         {
   let shared = 0;
-  for (let i = at - 1; i >= 0 && shared < context.length; i--) {
+  for (let i = at - 1, first = Math.max(0, at - MAX_SCANNED_CHARS); i >= first && shared < context.length; i--) {
     const char = text[i] ;
     if (char === " " || char === "\n" || char === "\u202f") continue;
     if (!sameLetter(char, context[context.length - 1 - shared] )) break;
@@ -3647,7 +3655,7 @@ function sharedBefore(text        , at        , context        )         {
 
 function sharedAfter(text        , at        , context        )         {
   let shared = 0;
-  for (let i = at; i < text.length && shared < context.length; i++) {
+  for (let i = at, last = Math.min(text.length, at + MAX_SCANNED_CHARS); i < last && shared < context.length; i++) {
     const char = text[i] ;
     if (char === " " || char === "\n" || char === "\u202f") continue;
     if (!sameLetter(char, context[shared] )) break;
@@ -3674,7 +3682,7 @@ function selectionSpan(text        , { selected, before, after }                
       const leftShared = left ? sharedBefore(text, from, left) : 0;
       const rightShared = right ? sharedAfter(text, to, right) : 0;
       const score = leftShared + rightShared;
-      work += score + 1;
+      work += score + MATCH_COST;
       if (work > MAX_SCORING_WORK) return null;
       if (score < bestScore) continue;
       if (truncated && (!score || leftShared < Math.min(CAPPED_CONTEXT_CHARS, left.length) || rightShared < Math.min(CAPPED_CONTEXT_CHARS, right.length))) continue;
@@ -3823,12 +3831,14 @@ function withoutCutWord(text        )         {
 
 function chooseTextFragment(context                  )                      {
   const truncated = context.pageText.length >= PAGE_TEXT_CAP;
-  const page = pageOf(truncated ? withoutCutWord(context.pageText) : context.pageText);
+  const text = collapsed(truncated ? withoutCutWord(context.pageText) : context.pageText);
   const widened = toWordBoundaries(context);
   const span =
-    selectionSpan(page.text, widened, truncated) ?? (widened.selected === context.selected ? null : selectionSpan(page.text, context, truncated));
+    selectionSpan(text, widened, truncated) ?? (widened.selected === context.selected ? null : selectionSpan(text, context, truncated));
   if (!span) return null;
-  const target         = { ...span, keyFrom: looselyFolded(page.text.slice(0, span.from)).length };
+  const keyBefore = looselyFolded(text.slice(0, span.from));
+  const page       = { text, key: keyBefore + looselyFolded(text.slice(span.from)) };
+  const target         = { ...span, keyFrom: keyBefore.length };
   if (textOf(page, target).includes("\n")) return rangeFragment(page, target);
   if (wordsIn(page, target).length <= MAX_EXACT_WORDS) return exactFragment(page, target);
   return rangeFragment(page, target) ?? (target.to - target.from <= MAX_EXACT_CHARS ? exactFragment(page, target) : null);
