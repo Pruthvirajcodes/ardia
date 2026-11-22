@@ -24,10 +24,10 @@ guardGroupClose(confirmRemovingShared);
 keepGroupsOpen((groupId, s = S()) => !!sharedFolderOfGroup(s, groupId));
 const settle = () => new Promise(setImmediate);
 
-function answering(t, confirmed) {
+function answering(t, confirmed, meanwhile = () => {}) {
   const real = shellNativeModules.ArdiaDialogs.confirm;
   const asked = [];
-  shellNativeModules.ArdiaDialogs.confirm = async (options) => (asked.push(options.title), { confirmed, suppressed: false });
+  shellNativeModules.ArdiaDialogs.confirm = async (options) => (asked.push(options.title), meanwhile(), { confirmed, suppressed: false });
   t.after(() => (shellNativeModules.ArdiaDialogs.confirm = real));
   return asked;
 }
@@ -247,6 +247,77 @@ test("an answer that can't move the folder any more isn't counted as a confirmed
   staysShared(f);
   assert.equal(devTabPresses().drops_shared_folder_confirmed, counted);
   assert.equal(devTabPresses().drops_shared_folder_asked, asked + 1);
+});
+
+const intoList = () => ({ zone: "list" });
+const intoOuter = (f) => {
+  const groupId = S().groupTabs([f.other, f.home], { pinned: true, name: "Outer" });
+  return { zone: "group", groupId };
+};
+
+for (const [what, into, change] of [
+  ["closed", intoList, (f) => S().closeTab(f.other)],
+  ["pinned as a row", intoList, (f) => S().pinTabs([f.other], true, true)],
+  ["pinned as a tile", intoList, (f) => S().pinTabs([f.other], true, false)],
+  ["grouped in Pinned", intoList, (f) => S().groupTabs([f.other], { pinned: true, name: "Kept" })],
+  ["moved to another window", intoList, (f) => S().moveTabsToWindow([f.other], null)],
+  ["moved to another profile", intoList, (f) => S().moveTabToProfile(f.other, S().createProfile({ name: "Work" }))],
+  ["taken out of the folder it was in", intoOuter, (f) => S().placeTabs([f.other], { pinned: false, groupId: null })],
+]) {
+  test(`a confirmed drop before a row that was ${what} meanwhile leaves the folder as it was`, async (t) => {
+    setConsentPeriod(true, `drop-test-${what}`);
+    t.after(() => setConsentPeriod(false, null));
+    const f = sidebar();
+    const spot = into(f);
+    answering(t, true, () => change(f));
+    const counted = devTabPresses().drops_shared_folder_confirmed;
+    dropGroup(f.team, { ...spot, beforeId: f.other });
+    await settle();
+    assert.equal(S().groups[f.team].pinned, true);
+    assert.equal(S().groups[f.team].parentId, undefined);
+    staysShared(f);
+    assert.equal(devTabPresses().drops_shared_folder_confirmed, counted);
+  });
+}
+
+for (const [what, into, change] of [
+  ["unchanged", intoList, () => {}],
+  ["grouped in the list", intoList, (f) => S().groupTabs([f.other], { pinned: false, name: "Reading" })],
+  ["moved within the list", intoList, (f) => S().moveTab(f.other, 0)],
+  ["unchanged in a folder", intoOuter, () => {}],
+  ["grouped inside that folder", intoOuter, (f) => S().groupTabs([f.other], { name: "Sub" })],
+]) {
+  test(`a confirmed drop before a row that is ${what} lands before it`, async (t) => {
+    const f = sidebar();
+    const spot = into(f);
+    answering(t, true, () => change(f));
+    dropGroup(f.team, { ...spot, beforeId: f.other });
+    await settle();
+    assert.equal(S().groups[f.team].parentId, spot.groupId);
+    const order = S().windows[f.w].tabIds;
+    assert.equal(order[order.indexOf(f.ids[0]) + 1], f.other);
+  });
+}
+
+test("a confirmed drop at the end of the list lands there though the last row closed meanwhile", async (t) => {
+  const f = sidebar();
+  answering(t, true, () => S().closeTab(f.other));
+  dropGroup(f.team, { zone: "list", beforeId: null });
+  await settle();
+  assert.equal(S().groups[f.team].pinned, false);
+  assert.equal(S().windows[f.w].tabIds.at(-1), f.ids[0]);
+});
+
+test("a confirmed drop before a split row lands though its first pane is outside the folder showing it", async (t) => {
+  answering(t, true);
+  const f = sidebar();
+  S().groupTabs([f.home, f.other], { pinned: true, name: "Outer" });
+  const sub = S().groupTabs([f.other], { name: "Sub" });
+  const split = { id: "split-across", windowId: f.w, orientation: "horizontal", slots: [f.home, f.other].map((tabId) => ({ tabId, size: 0.5 })) };
+  useBrowser.setState((s) => ({ splits: { ...s.splits, [split.id]: split } }));
+  dropGroup(f.team, { zone: "group", groupId: sub, beforeId: f.home });
+  await settle();
+  assert.equal(S().groups[f.team].parentId, sub);
 });
 
 test("a confirmed drop out of Pinned is counted once", async (t) => {

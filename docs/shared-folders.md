@@ -27,7 +27,8 @@ Arc had shared folders; Dia has none, so this is an Ardia extra (`docs/dia-featu
 - Removing a shared folder from the sidebar (Delete, Close from the menu, ⌃⌘W or the close control, Ungroup, Unpin,
   Move to Bookmarks Bar, Move to Profile, dragging it out of Pinned or into another folder) asks first, and
   says the directory stays with every link and with the people it's shared with. It only unbinds; Ardia never
-  deletes the directory.
+  deletes the directory. If the row a drag was dropped before closes or leaves that section while it asks, Remove
+  moves nothing and the folder stays shared (`dropTargetInPlace` in `state/groups/keptFolderDrops.ts`).
 - Dragging a shared folder's last link out doesn't remove the folder: it keeps an "Empty Folder" row and stays shared,
   and the link's file leaves the directory as any link dragged out does (`state/groups/emptyFolder.ts`). The row
   itself can't be dragged out. A window's last tab dropped on another window takes its folder along, link and all.

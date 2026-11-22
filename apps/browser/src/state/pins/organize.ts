@@ -9,7 +9,7 @@ import { placing, type TabPlacement } from "./placing";
 import { pinnedGroupMembers } from "../browser/structure";
 import { samePage } from "../../lib/url";
 import { pinHome } from "./pinHomes";
-import { dropOnceAllowed, keptFolderLeavingPinned } from "../groups/keptFolderDrops";
+import { dropOnceAllowed, dropTargetInPlace, keptFolderLeavingPinned } from "../groups/keptFolderDrops";
 import { withoutEmptyFolderRows } from "../groups/emptyFolder";
 import { foreignWriteHooks } from "../browser/foreignWriteHooks";
 
@@ -131,7 +131,7 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     if (leaving) {
       const move = () => {
         const now = get();
-        if (keptFolderLeavingPinned(now, drop) !== leaving) return false;
+        if (keptFolderLeavingPinned(now, drop) !== leaving || !dropTargetInPlace(now, drop)) return false;
         foreignWriteHooks.around(() => set(dropping(now, ids, drop)));
         return true;
       };
