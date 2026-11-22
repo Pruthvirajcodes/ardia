@@ -59,6 +59,9 @@ export {
   type GlassSurface,
   type LookColors,
   type ProfileBackdropProps,
+  type ThemeLook,
+  type ThemeLookStop,
+  type ThemeTexture,
 } from "./look";
 export { lookBudget, useLookBudgetProbe } from "./lookBudget";
 export { systemLookNow, useSystemLook, useSystemReduceMotion, useSystemReduceTransparency } from "./systemLook";
