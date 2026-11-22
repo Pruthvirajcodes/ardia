@@ -3625,9 +3625,11 @@ function spanPastTrailers(text        , wanted        , left        , right     
   let bestScore = -1;
   let nearMiss = false;
   let work = 0;
-  candidates: for (let from = text.indexOf(first); from !== -1; from = text.indexOf(first, from + 1)) {
+  const head = first.slice(0, SEARCHED_HEAD_CHARS);
+  candidates: for (let from = text.indexOf(head); from !== -1; from = text.indexOf(head, from + 1)) {
     work += MATCH_COST + first.length / COMPARED_CHARS_PER_COST;
     if (work > MAX_SCORING_WORK) return null;
+    if (head.length < first.length && !text.startsWith(first, from)) continue;
     if (isInsideWord(text, from)) continue;
     if (left ? !sharedBefore(text, from, left) : from > 0 && text[from - 1] !== "\n") continue;
     const firstLineEnd = from + first.length;
@@ -3715,10 +3717,11 @@ function selectionSpan(text        , context                  , truncated       
   };
   const exact = bestIn(text, wanted);
   const found = exact === undefined ? bestIn(withoutBreaks(text), withoutBreaks(wanted)) : exact;
+  if (found === null) return null;
   const past = truncated ? undefined : spanPastTrailers(text, wanted, left, right);
   if (past === undefined) return found ?? null;
   if (found === undefined) return past;
-  if (!found || !past || found.score === past.score) return null;
+  if (!past || found.score === past.score) return null;
   return found.score > past.score ? found : past;
 }
 
