@@ -72,29 +72,6 @@ const baseIn = (state: ScopeState) => (key: string) => {
   return json === undefined ? null : openTabValue(JSON.parse(json));
 };
 
-export function openTabsPinPageWrites(profileId: string, state: ScopeState, mode: OpenTabsMode, flag: () => HLC | undefined): PinPageWrites | undefined {
-  if (mode !== "on") return undefined;
-  return (written) => {
-    const seen = pagesSeenIn(state);
-    const fromSync = pinPagesFromSyncIn(seen);
-    if (!switchedLater(state, false, flag())) {
-      for (const [key, urls] of written) {
-        for (const url of urls) {
-          const baseline = seen.get(key);
-          if (baseline === undefined) seen.set(key, url);
-          else if (baseline !== url) {
-            const pages = fromSync.get(key);
-            if (pages) pages.add(url);
-            else fromSync.set(key, new Set([url]));
-          }
-        }
-      }
-    }
-    forgetClosedPages(state, baseIn(state));
-    forgetPinPagesNoCopyShows(store(), profileId, fromSync);
-  };
-}
-
 function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCloses, base: (key: string) => unknown, remote: (key: string) => unknown): Extraction {
   const s = store();
   const { synced, pinned } = localOpenTabs(s, profileId);
@@ -269,4 +246,27 @@ export function openTabsAdapters(profileId: string, state: ScopeState, mode: Ope
       apply: (visible, changed) => !off() && applyOpenTabs(profileId, visible, changed, new Set(closes.keys()), pagesSeenIn(state)),
     },
   ];
+}
+
+export function openTabsPinPageWrites(profileId: string, state: ScopeState, mode: OpenTabsMode, flag: () => HLC | undefined): PinPageWrites | undefined {
+  if (mode !== "on") return undefined;
+  return (written) => {
+    const seen = pagesSeenIn(state);
+    const fromSync = pinPagesFromSyncIn(seen);
+    if (!switchedLater(state, false, flag())) {
+      for (const [key, urls] of written) {
+        for (const url of urls) {
+          const baseline = seen.get(key);
+          if (baseline === undefined) seen.set(key, url);
+          else if (baseline !== url) {
+            const pages = fromSync.get(key);
+            if (pages) pages.add(url);
+            else fromSync.set(key, new Set([url]));
+          }
+        }
+      }
+    }
+    forgetClosedPages(state, baseIn(state));
+    forgetPinPagesNoCopyShows(store(), profileId, fromSync);
+  };
 }
