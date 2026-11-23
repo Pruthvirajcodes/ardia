@@ -189,6 +189,9 @@ extension WebKitTab {
 
   func paintBackdrop() {
     wantsLayer = true
+    if safety.backdrop.uncovers(layer?.backgroundColor, visible: visible) {
+      ArdiaEvents.emit("webKit.counted", data: ArdiaConsentStamp.begin().onto(["name": "backdropHidden"]))
+    }
     layer?.backgroundColor = safety.backdrop.layerColor(visible: visible)
     guard let view = webView, view.responds(to: NSSelectorFromString("_setDrawsBackground:")) else { return }
     let draws = safety.backdrop.pageDrawsBackground
