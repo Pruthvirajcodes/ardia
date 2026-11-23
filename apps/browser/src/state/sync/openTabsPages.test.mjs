@@ -5,13 +5,23 @@ const { Clock, emptyScope, syncScope } = await import("@ardia/sync");
 const { openTabsAdapters } = await import("./openTabs.ts");
 const { noteTabClosedByUser, openTabsClosed, recordOpenTabCloses } = await import("./openTabCloses.ts");
 const { holdsOpenTabs } = await import("./openTabsLocal.ts");
-const { openTabCloses } = await import("./scopeAdapters.ts");
 const { profileScope } = await import("./records.ts");
 
 const S = () => useBrowser.getState();
 const P = "default";
 const SCOPE = profileScope("pages");
 const page = (name) => `https://${name}.example/`;
+
+function openTabCloses(doc, scope) {
+  return {
+    keys: () => doc.tabCloses?.[scope] ?? [],
+    settle: (keys) => {
+      const left = (doc.tabCloses?.[scope] ?? []).filter((key) => !keys.includes(key));
+      if (left.length) (doc.tabCloses ??= {})[scope] = left;
+      else if (doc.tabCloses) delete doc.tabCloses[scope];
+    },
+  };
+}
 
 function pagesKeptFor(state, run) {
   const { set } = WeakMap.prototype;
@@ -187,6 +197,31 @@ test("a tab that took another key still sends its own page after it goes back to
   await comesBackPinned(d, id, rekey("mirrored"), rekey(undefined));
 });
 
+test("a closed tab that comes back as a pin sends the page it went to while pinned once unpinned", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  d.edit(() => S().closeTab(id));
+  await d.sync();
+  assert.equal(d.published(id), null);
+  assert.equal(d.pages.has(id), false);
+  const pin = S().newTab(d.windowId, { url: page("mail"), background: true });
+  S().pinTabs([pin], true);
+  S().updateTab(pin, { pinKey: id });
+  await d.sync();
+  d.receive(id, { u: page("shared"), t: "", pos: "V", g: null, a: 0 });
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+  S().updateTab(pin, { url: page("inbox") });
+  d.edit(() => S().pinTabs([pin], false));
+  await d.sync();
+  assert.equal(d.published(id), page("inbox"));
+  d.edit(() => S().closeTab(pin));
+  await d.sync();
+  assert.equal(d.published(id), null);
+  assert.deepEqual([...d.pages], [[d.kept, page("keep")]]);
+});
+
 test("a key that still has a published page keeps its last page through a failed round", async () => {
   const d = start();
   const other = S().createProfile({ name: "Other" });
@@ -247,6 +282,28 @@ test("closes published while the profile has no window leave no page behind", as
   await d.sync();
   assert.deepEqual(ids.map(d.published), [null, null]);
   assert.deepEqual([...d.pages], [[d.kept, page("keep")]], "only the tab that is still published keeps its page");
+});
+
+test("a tab another computer closes while the profile has no window leaves no page behind", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  d.edit(() => S().closeWindow(d.windowId));
+  assert.equal(holdsOpenTabs(S(), P), false);
+  assert.deepEqual(d.closes.keys(), []);
+  await d.sync();
+  assert.deepEqual([...d.pages.keys()].sort(), [d.kept, id].sort());
+  d.receive(id, null);
+  await d.sync();
+  await d.sync();
+  assert.deepEqual([...d.pages.keys()], [d.kept]);
+  S().createWindow({});
+  await d.sync();
+  await d.sync();
+  assert.equal(d.published(id), null);
+  assert.equal(Object.values(S().tabs).some((t) => t.url === page("mail")), false);
+  assert.equal(d.published(d.kept), page("keep"));
+  assert.equal(Object.values(S().tabs).some((t) => t.url === page("keep")), true);
 });
 
 test("a close whose write failed while the profile has no window leaves no page behind after the retry", async () => {

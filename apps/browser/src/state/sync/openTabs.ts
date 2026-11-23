@@ -1,5 +1,5 @@
 import { assignPositions, canonical, dropBase, putBase, recordsWith, type Adapter, type Extraction, type HLC, type ScopeState } from "../../platform/sync";
-import { useBrowser } from "../browser/store";
+import { useBrowser, type BrowserState } from "../browser/store";
 import { pinKeyOf } from "../browser/model";
 import { fromSync } from "../pins/pinOrderChoices";
 import { noteOpenTabsPublished, noteOpenTabsWoke } from "../telemetry/openTabSyncCounts";
@@ -32,7 +32,16 @@ function keysInUse(s: BrowserState) {
 function forgetClosedPages(state: ScopeState, baseTab: (key: string) => OpenTabValue | null) {
   const seen = pagesSeenIn(state);
   let inUse: Set<string> | null = null;
-  for (const key of seen.keys()) if (!baseTab(key) && !(inUse ??= keysInUse(store())).has(key)) seen.delete(key);
+  const gone = (key: string) => !baseTab(key) || state.records[`${OPEN_TAB}${key}`]?.v === null;
+  for (const key of seen.keys()) if (gone(key) && !(inUse ??= keysInUse(store())).has(key)) seen.delete(key);
+}
+
+function notePinStartPages(s: BrowserState, profileId: string, pinned: Set<string>, seen: Map<string, string>) {
+  for (const t of Object.values(s.tabs)) {
+    if (t.profileId !== profileId) continue;
+    const key = pinKeyOf(t);
+    if (pinned.has(key) && !seen.has(key)) seen.set(key, t.url);
+  }
 }
 
 function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCloses, base: (key: string) => unknown, remote: (key: string) => unknown): Extraction {
@@ -47,6 +56,7 @@ function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCl
     return tab;
   };
   forgetClosedPages(state, baseTab);
+  notePinStartPages(s, profileId, pinned, seen);
   const positions = new Map<string, string>();
   for (const w of new Set(synced.map(({ tab }) => tab.windowId))) {
     const here = synced.filter(({ tab }) => tab.windowId === w);
