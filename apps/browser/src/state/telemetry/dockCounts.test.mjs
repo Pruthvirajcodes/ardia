@@ -18,3 +18,18 @@ test("a hide that doesn't slide is counted apart from the slides, and the count 
   assert.equal(taken.sidebar_slides, 0);
   assert.equal(takeDockCounts().sidebar_jump_hides, 0);
 });
+
+test("a peek whose slide passed its final width counts only under the consent period it started in, and the count resets once taken", async () => {
+  const { noteSidebarPeekPastTarget } = await import("./dockCounts.ts");
+  const { consentToken, setConsentPeriod } = await import("./consentPeriod.ts");
+  takeDockCounts();
+  setConsentPeriod(true, "peek-on");
+  const started = consentToken();
+  noteSidebarPeekPastTarget(started);
+  noteSidebarPeekPastTarget(null);
+  setConsentPeriod(true, "peek-next");
+  noteSidebarPeekPastTarget(started);
+  setConsentPeriod(false, null);
+  assert.equal(takeDockCounts().sidebar_peeks_past_target, 1);
+  assert.equal(takeDockCounts().sidebar_peeks_past_target, 0);
+});
