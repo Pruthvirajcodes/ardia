@@ -363,12 +363,14 @@ It covers profiles that share another's data (tabs are each profile's own).
   session restored publishes nothing (tab ids survive a relaunch; tested).
 - **Pins.** A tab pinned on one Mac deletes its `otab:t:` record and goes out as `pin:t:` under the same key; the pin
   adapter, which runs first, pins the other Mac's regular tab, so it isn't doubled. Unpinning gives it back. A pin's
-  page counts as looked at when this Mac first sees it pinned, and again whenever sync moves a copy that isn't loaded,
-  so on unpin a page the loaded copy went to while pinned is sent over a newer record (even when its key came back
-  from a closed tab), and a pin that didn't navigate here keeps the other Mac's newer page. A navigation made before
-  this Mac's first sync sees the pin counts as its starting page and isn't sent until it navigates again, so it never
-  overwrites a newer record. The remembered page of a key goes once no tab or parked pin has it and its record is
-  deleted or compacted away, also while the profile has no window (tested).
+  page counts as looked at when the pin adapter writes it (a pin another Mac brings back, or a `pin:t:` record moving
+  a copy that isn't loaded); `pinnedApply.ts` hands those pages to the open-tabs extractor (`pinPagesFromSync.ts`).
+  On unpin, a copy whose page is the one looked at, or one the pin adapter wrote that a copy still shows, keeps the
+  other Mac's newer record; any other page is a navigation made here and is sent. Copies mirrored into other windows,
+  frozen copies following the loaded one, and a pin that falls asleep after navigating all follow from that, with no
+  guess from whether a copy is loaded. A pin this Mac hasn't seen as an open tab or had written by the pin adapter since
+  launch has no page looked at, so it keeps the newer record unless the record is gone. The remembered page of a key goes once no tab or
+  parked pin has it and its record is deleted or compacted away, also while the profile has no window (tested).
 - **Turning it off.** The Mac where the switch went off tombstones every `otab:` record of the profile and writes
   `otab:on` `{ on: false }` in the same batch (and keeps tombstoning stragglers while it stays off, `tabsRetire` on the
   profile's link; it stops as soon as a newer `otab:on` `{ on: true }` shows the switch went back on elsewhere, even

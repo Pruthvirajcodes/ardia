@@ -7,6 +7,7 @@ const { noteTabClosedByUser, openTabsClosed, recordOpenTabCloses } = await impor
 const { holdsOpenTabs } = await import("./openTabsLocal.ts");
 const { openTabCloses } = await import("./scopeAdapters.ts");
 const { profileScope } = await import("./records.ts");
+const { pinnedAreaAdapters } = await import("./pinned.ts");
 
 const S = () => useBrowser.getState();
 const P = "default";
@@ -55,13 +56,19 @@ function start() {
     },
     remove: async (_scope, ids) => ids.forEach((id) => files.delete(id)),
   };
-  const adapters = () => openTabsAdapters(P, scope, "on", closes, () => undefined);
+  const adapters = () => [...pinnedAreaAdapters(P), ...openTabsAdapters(P, scope, "on", closes, () => undefined)];
+  let received = 0;
+  const receiveOps = (ops) => {
+    received++;
+    const payload = { v: 1, kind: "log", device: "devB", seq: received, at: Date.now(), ops: ops.map(([k, v]) => ({ k, h: clock.tick(), v })) };
+    files.set(`remote${received}`, JSON.stringify(payload));
+  };
   return {
     windowId,
     kept,
     closes,
     failing,
-    pages: pagesKeptFor(scope, () => adapters()[0].extract(() => undefined, () => false, 0, () => false, () => undefined)),
+    pages: pagesKeptFor(scope, () => adapters().find((a) => a.prefix === "otab:").extract(() => undefined, () => false, 0, () => false, () => undefined)),
     open: (name) => S().newTab(windowId, { url: page(name), background: true }),
     published: (key) => scope.records[`otab:t:${key}`]?.v?.u ?? null,
     compactAway(key) {
@@ -75,10 +82,8 @@ function start() {
       recordOpenTabCloses(doc, openTabsClosed(S(), before));
     },
     sync: () => syncScope({ scope: SCOPE, state: scope, transport, adapters: adapters(), clock, device: "devA" }),
-    receive(key, value) {
-      const payload = { v: 1, kind: "log", device: "devB", seq: 1, at: Date.now(), ops: [{ k: `otab:t:${key}`, h: clock.tick(), v: value }] };
-      files.set("remote", JSON.stringify(payload));
-    },
+    receive: (key, value) => receiveOps([[`otab:t:${key}`, value]]),
+    receivePin: (key, url) => receiveOps([[`pin:t:${key}`, { g: null, u: url, t: null, i: null, ti: "", pos: "V" }]]),
   };
 }
 
@@ -192,98 +197,181 @@ test("a tab that took another key still sends its own page after it goes back to
   await comesBackPinned(d, id, rekey("mirrored"), rekey(undefined));
 });
 
-test("a closed tab that comes back as a pin sends the page it went to while pinned once unpinned", async () => {
-  const d = start();
+const shared = { u: page("shared"), t: "", pos: "V", g: null, a: 0 };
+const loadedAt = (url) => ({ url, page: { kind: "loaded", nav: { url, seq: 1 } } });
+
+async function closedThenRestoredAsPin(d) {
   const id = d.open("mail");
   await d.sync();
   d.edit(() => S().closeTab(id));
   await d.sync();
   assert.equal(d.published(id), null);
   assert.equal(d.pages.has(id), false);
-  const pin = S().newTab(d.windowId, { url: page("mail"), background: true });
-  S().pinTabs([pin], true);
-  S().updateTab(pin, { pinKey: id });
+  d.receivePin(id, page("mail"));
   await d.sync();
-  d.receive(id, { u: page("shared"), t: "", pos: "V", g: null, a: 0 });
+  assert.equal(S().tabs[id].pin?.as, "tile");
+  assert.equal(S().tabs[id].page.kind, "asleep");
+  return id;
+}
+
+test("a closed tab that another computer's pin brings back sends the page it went to while pinned once unpinned", async () => {
+  const d = start();
+  const id = await closedThenRestoredAsPin(d);
+  await d.sync();
+  d.receive(id, shared);
   await d.sync();
   assert.equal(d.published(id), page("shared"));
-  S().updateTab(pin, { url: page("inbox") });
-  d.edit(() => S().pinTabs([pin], false));
+  S().updateTab(id, loadedAt(page("inbox")));
+  d.edit(() => S().pinTabs([id], false));
   await d.sync();
   assert.equal(d.published(id), page("inbox"));
-  d.edit(() => S().closeTab(pin));
+  d.edit(() => S().closeTab(id));
   await d.sync();
   assert.equal(d.published(id), null);
   assert.deepEqual([...d.pages], [[d.kept, page("keep")]]);
 });
 
-test("a pin sync moved while asleep keeps the newer record of another computer once unpinned without navigating", async () => {
+test("a restored pin that navigates before the next sync still sends that page once unpinned", async () => {
   const d = start();
-  const id = d.open("mail");
-  await d.sync();
-  d.edit(() => S().pinTabs([id], true));
-  S().updateTab(id, { page: { kind: "asleep" } });
-  await d.sync();
-  S().updateTab(id, { url: page("news"), page: { kind: "asleep" } });
-  d.receive(id, { u: page("shared"), t: "", pos: "V", g: null, a: 0 });
-  await d.sync();
-  assert.equal(d.published(id), page("shared"));
-  d.edit(() => S().pinTabs([id], false));
-  await d.sync();
-  assert.equal(d.published(id), page("shared"));
-});
-
-test("a pin that sleeps after a local navigation still sends that page once unpinned", async () => {
-  const d = start();
-  const id = d.open("mail");
-  await d.sync();
-  d.edit(() => S().pinTabs([id], true));
-  await d.sync();
-  S().updateTab(id, { url: page("inbox") });
-  await d.sync();
-  S().updateTab(id, { page: { kind: "asleep" } });
-  d.receive(id, { u: page("shared"), t: "", pos: "V", g: null, a: 0 });
+  const id = await closedThenRestoredAsPin(d);
+  S().updateTab(id, loadedAt(page("inbox")));
+  d.receive(id, shared);
   await d.sync();
   d.edit(() => S().pinTabs([id], false));
   await d.sync();
   assert.equal(d.published(id), page("inbox"));
 });
 
-test("a closed tab that comes back as a sleeping pin sends a page it went to after the first sync once unpinned", async () => {
+test("a restored pin unpinned without navigating keeps the newer record of another computer", async () => {
   const d = start();
-  const id = d.open("mail");
+  const id = await closedThenRestoredAsPin(d);
+  d.receive(id, shared);
   await d.sync();
-  d.edit(() => S().closeTab(id));
-  await d.sync();
-  const pin = S().newTab(d.windowId, { url: page("mail"), background: true });
-  S().pinTabs([pin], true);
-  S().updateTab(pin, { pinKey: id, page: { kind: "asleep" } });
-  await d.sync();
-  d.receive(id, { u: page("shared"), t: "", pos: "V", g: null, a: 0 });
-  await d.sync();
-  S().updateTab(pin, { url: page("inbox"), page: { kind: "loaded", nav: { url: page("inbox"), seq: 1 } } });
-  d.edit(() => S().pinTabs([pin], false));
-  await d.sync();
-  assert.equal(d.published(id), page("inbox"));
-  d.edit(() => S().closeTab(pin));
-  await d.sync();
-  assert.deepEqual([...d.pages], [[d.kept, page("keep")]]);
-});
-
-test("a closed tab that comes back as a pin and navigates before the first sync never overwrites the newer record", async () => {
-  const d = start();
-  const id = d.open("mail");
-  await d.sync();
-  d.edit(() => S().closeTab(id));
-  await d.sync();
-  const pin = S().newTab(d.windowId, { url: page("mail"), background: true });
-  S().pinTabs([pin], true);
-  S().updateTab(pin, { pinKey: id, url: page("inbox"), page: { kind: "loaded", nav: { url: page("inbox"), seq: 1 } } });
-  d.receive(id, { u: page("shared"), t: "", pos: "V", g: null, a: 0 });
-  await d.sync();
-  d.edit(() => S().pinTabs([pin], false));
+  d.edit(() => S().pinTabs([id], false));
   await d.sync();
   assert.equal(d.published(id), page("shared"));
+});
+
+async function pinnedThenMovedBySync(d, id) {
+  await d.sync();
+  d.edit(() => S().pinTabs([id], true));
+  await movedBySync(d, id);
+}
+
+async function movedBySync(d, id) {
+  S().updateTab(id, { page: { kind: "asleep" } });
+  await d.sync();
+  d.receivePin(id, page("news"));
+  d.receive(id, shared);
+  await d.sync();
+  assert.equal(S().tabs[id].url, page("news"));
+  assert.equal(d.published(id), page("shared"));
+}
+
+test("a sleeping pin sync moved keeps the newer record of another computer once unpinned without navigating", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await pinnedThenMovedBySync(d, id);
+  d.edit(() => S().pinTabs([id], false));
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+});
+
+test("a sleeping pin sync moved sends a page it went to afterwards once unpinned", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await pinnedThenMovedBySync(d, id);
+  S().updateTab(id, loadedAt(page("inbox")));
+  d.edit(() => S().pinTabs([id], false));
+  await d.sync();
+  assert.equal(d.published(id), page("inbox"));
+});
+
+const copiesOf = (key) => Object.values(S().tabs).filter((t) => (t.pinKey ?? t.id) === key);
+
+function mirroredPin(d, id) {
+  d.edit(() => S().pinTabs([id], true));
+  const otherWindow = S().createWindow({});
+  const copy = copiesOf(id).find((t) => t.windowId === otherWindow);
+  assert.ok(copy, "the other window shows a copy of the pin");
+  return { copy: copy.id, otherWindow };
+}
+
+
+async function loadedCopyWhileSyncMovesTheSleepingOne(d) {
+  const id = d.open("mail");
+  await d.sync();
+  const { copy, otherWindow } = mirroredPin(d, id);
+  await d.sync();
+  S().updateTab(copy, { page: { kind: "asleep" } });
+  S().updateTab(id, loadedAt(page("mail")));
+  await d.sync();
+  d.receivePin(id, page("news"));
+  d.receive(id, shared);
+  await d.sync();
+  assert.deepEqual([S().tabs[copy].url, S().tabs[copy].page.kind], [page("news"), "asleep"]);
+  assert.deepEqual([S().tabs[id].url, S().tabs[id].page.kind], [page("mail"), "loaded"]);
+  assert.equal(d.published(id), page("shared"));
+  return { id, copy, otherWindow };
+}
+
+test("unpinning the copy sync moved, with a loaded copy left on the old page, keeps the newer record", async () => {
+  const d = start();
+  const { id, copy } = await loadedCopyWhileSyncMovesTheSleepingOne(d);
+  d.edit(() => S().pinTabs([copy], false));
+  d.edit(() => S().closeWindow(d.windowId));
+  assert.deepEqual(copiesOf(id).map((t) => [t.url, !!t.pin]), [[page("news"), false]]);
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+});
+
+test("unpinning the loaded copy still on the old page keeps the newer record", async () => {
+  const d = start();
+  const { id, otherWindow } = await loadedCopyWhileSyncMovesTheSleepingOne(d);
+  d.edit(() => S().pinTabs([id], false));
+  d.edit(() => S().closeWindow(otherWindow));
+  assert.deepEqual(copiesOf(id).map((t) => [t.url, !!t.pin]), [[page("mail"), false]]);
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+});
+
+test("a frozen copy that followed a local navigation sends that page once unpinned", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  const { copy, otherWindow } = mirroredPin(d, id);
+  await d.sync();
+  const tabs = S().tabs;
+  useBrowser.setState({
+    tabs: { ...tabs, [copy]: { ...tabs[copy], ...loadedAt(page("inbox")) }, [id]: { ...tabs[id], url: page("inbox"), page: { kind: "frozen", holderId: copy } } },
+  });
+  assert.equal(S().tabs[id].page.kind, "frozen");
+  await d.sync();
+  d.receive(id, shared);
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+  d.edit(() => S().pinTabs([id], false));
+  d.edit(() => S().closeWindow(otherWindow));
+  assert.deepEqual(copiesOf(id).map((t) => [t.url, !!t.pin]), [[page("inbox"), false]]);
+  await d.sync();
+  assert.equal(d.published(id), page("inbox"));
+});
+
+test("a pin that navigates and falls asleep before the next sync sends that page once unpinned", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  d.edit(() => S().pinTabs([id], true));
+  await d.sync();
+  S().updateTab(id, loadedAt(page("inbox")));
+  S().updateTab(id, { page: { kind: "asleep" } });
+  await d.sync();
+  d.receive(id, shared);
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+  d.edit(() => S().pinTabs([id], false));
+  await d.sync();
+  assert.equal(d.published(id), page("inbox"));
 });
 
 test("a key that still has a published page keeps its last page through a failed round", async () => {

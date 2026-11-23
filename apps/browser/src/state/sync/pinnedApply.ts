@@ -28,6 +28,7 @@ import {
 } from "./pinRecords";
 import { homeWindow, store, type Window } from "./pinnedSyncState";
 import { ASLEEP, hasPage, isAsleep } from "../tabs/pageSession";
+import { notePinPagesFromSync } from "./pinPagesFromSync";
 
 export function applyPinned(profileId: string, visible: Map<string, unknown>, changed: Set<string>, base: (key: string) => unknown, records: ApplyRecords): boolean | void {
   if ([...changed].every((k) => k.startsWith(PIN_ROW))) return true;
@@ -225,10 +226,12 @@ export function applyPinned(profileId: string, visible: Map<string, unknown>, ch
     if ((was?.g ?? undefined) === g) return;
     noted.set(key, g ? { g, w: was?.g === g && was.w !== undefined ? was.w : records.now + records.horizon } : {});
   };
+  const pagesFromSync = new Map<string, string>();
   for (const [id, v] of pins) {
     const group = v.g && all.has(v.g) && groups[v.g] ? groups[v.g]! : null;
     const old = tabs[id];
     if (old) {
+      pagesFromSync.set(pinKeyOf(old), v.u);
       tabs[id] = {
         ...old,
         pin: group ? null : (old.pin ?? (marked(pinKeyOf(old)) ? ROW_PIN : markedTile(base, pinKeyOf(old)))),
@@ -251,6 +254,7 @@ export function applyPinned(profileId: string, visible: Map<string, unknown>, ch
       page: ASLEEP,
     };
     note(keyOfLocal.get(id) ?? id, id);
+    pagesFromSync.set(keyOfLocal.get(id) ?? id, v.u);
     tabs[id] = tab;
     windows[windowId] = { ...w, tabIds: [...w.tabIds, id] };
   }
@@ -325,4 +329,5 @@ export function applyPinned(profileId: string, visible: Map<string, unknown>, ch
   const { find, splits, selection, windowOrder, windowUi } = s;
   const pinSync = noted.size ? { ...s.pinSync, [profileId]: { ...s.pinSync[profileId], ...Object.fromEntries(noted) } } : s.pinSync;
   fromSync(() => useBrowser.setState({ tabs, windows, groups, find, splits, selection, windowOrder, windowUi, parkedPins, pinSync }));
+  notePinPagesFromSync(profileId, pagesFromSync);
 }
