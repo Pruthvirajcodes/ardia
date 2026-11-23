@@ -65,8 +65,10 @@ Ardia never creates the folder. `ardia config init` does, or the user does.
   `space`, `tab`, `return`, `escape`, `delete`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup`,
   `pagedown`) or in glyphs (`⌘⇧T`, what `formatShortcut` prints). `""` unbinds the command. A command left out keeps
   whatever it has. Fixed commands can't be rebound. The app translates to its stored form (`[key, ...modifiers]`); a
-  command's own default shortcut drops its override. Each entry stands alone: a bad one is reported and skipped, the
-  others apply.
+  command's own default shortcut drops its override. Each profile also has `switchProfile:<profile id>` and
+  `newLittleArdia:<profile id>` (ids from `ardia call profiles.list`); the file takes them for any id, so a profile
+  made later picks its key up, while `settings.set` refuses an id no profile has. Each entry stands alone: a bad one
+  is reported and skipped, the others apply.
 - `mouseShortcuts` maps a command id to a mouse button in its stored form: `["mouse:middle"]`, `["mouse:4"]` or
   `["mouse:5"]`, optionally followed by `"control"`, `"option"`, `"shift"`, `"command"`. It sits beside the command's
   key shortcut (setting one never takes the other), runs only on the Mac for now, and is what Settings › Shortcuts
@@ -150,7 +152,7 @@ stays off until that's decided.
 ### The command bar's start
 
 `settings.commandBarStart` sets what a new tab's command bar (⌘T, with New Tab opening the command bar) lists before
-you type. It has no Settings row: plugins (github.com/mantrakp04/ardia-plugins) and people write it here.
+you type. It has no Settings row: plugins (github.com/ardia-browser/plugins) and people write it here.
 
 ```json
 "commandBarStart": { "openTabs": { "hidePinned": true, "hideTopApps": true, "limit": 5 } }
