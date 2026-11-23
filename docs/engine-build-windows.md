@@ -263,6 +263,14 @@ The layers:
   that isn't there. The patches Windows applies and the layer sources it compiles are recorded in
   `accepted-patches.txt` and `accepted-layer-sources.txt`; a change to either is taken on purpose with
   `check_inputs.py --accept`. `chrome.dll` depends on it; `//ardia/win:probe` builds `ArdiaProbe.dll`, a stand-in for the app.
+- `series_win.py layer` copies to `//ardia/linux` the `engine/ardiacore-linux` files `//ardia/win/BUILD.gn` names:
+  the WebUI shell (`--ardia-shell=webui`, `docs/windows.md`, WebUI pilot) compiles them as they are. `check_inputs.py`
+  keeps that list in `accepted-linux-sources.txt`, and `key-inputs.json` lists them, so a change to one of them moves
+  the Windows key as well as the Linux one; the rest of the Linux layer doesn't. For the compile probe, run
+  `04-series.sh` with `ARDIA_LINUX_COMPILE_PROBE=1`: the whole Linux layer is copied, with a `BUILD.gn` made from
+  `linux-probe.gn`, loaded only with the GN arg `ardia_linux_compile_probe = true`. Append that arg to `args.gn`,
+  `gn gen`, build `ardia/win:linux_compile_probe` with `-k 0`, then restore `args.gn`, `gn gen` again (no rebuild
+  follows: no compile line changes) and run `04-series.sh` without the variable.
 - `engine/ardiacore/apply.sh` doesn't run: it is Mac code. Only `ardia/core/ac_hooks.h` and `ac_content_hooks.h` are
   copied, because the hook patches include them (`// nogncheck`) and they are OS-neutral. With nothing setting the
   hooks, Chrome behaves as stock.
@@ -374,6 +382,7 @@ fails when a line has no row here, a row's Line doesn't match it, a Removable wh
 | `chromium-win-child-window-activation.patch` | chromium | Lets a browser window that is a child window take activation; unused since hosted windows are top-level, and harmless | Now: nothing uses it; drop it with the next Windows engine |
 | `chromium-win-app-in-browser-process.patch` | chromium | `chrome.dll` links `//ardia/win` and calls it before Chrome's main and after it: with `ArdiaApp.dll` beside the launcher the browser process runs the app, and ends as soon as Chromium's shutdown returns, without running exit handlers (#1706). Its `g_ardia_win_add_main_parts` adds the host's parts to `ChromeBrowserMainParts`; the React Native path and the `--ardia-shell=webui` pilot both set it | Never while Ardia's Windows host runs in the browser process, whichever shell it starts |
 | `chromium-win-install-names.patch` | chromium | The install is named Ardia (`%LOCALAPPDATA%\Ardia\User Data`), and `ARDIA_DATA_DIR` moves Chromium's data | Never: Ardia's Windows names |
+| `chromium-win-webui-user-data-dir.patch` | chromium | With `--ardia-shell=webui` (read as `base::CommandLine` reads it: any case, `--`, `-` or `/`), `install_static` picks `%LOCALAPPDATA%\Ardia WebUI\Chromium`, exits before Crashpad starts if the chosen folder (from any source) resolves into the React Native app's folders (their `User Data` included), can't be created, has any link inside it or a `UserDataDir` policy is set, then holds the folder open (`FILE_LIST_DIRECTORY`, no delete sharing) and hands Chromium its final path; `install_static_unittests` checks its parser against `base::CommandLine`, so neither the profile nor Crashpad ever lands there (`docs/windows.md`, WebUI pilot) | When the WebUI build gets its own install mode at the cutover |
 | `chromium-win-hosted-page-fills-window.patch` | chromium | A window the React Native path hosts (`g_ardia_win_hosts_normal_windows`) has no rounded page frame or insets: the page fills it | When the WebUI host (#3686) is verified as the Windows default and the React Native Windows host paths are retired. Until then it serves the React Native path; the `--ardia-shell=webui` pilot never sets the hook |
 | `chromium-win-hosted-no-browser-shortcuts.patch` | chromium | Chrome's own accelerators are off in hosted windows, so Ctrl+L and the rest reach the app | Never while the app owns the shortcuts of hosted windows |
 | `chromium-win-relaunch-to-app.patch` | chromium | A second launch's command line goes to `//ardia/win` instead of Chrome's startup, which would open nothing under `--no-startup-window` | Never while the app opens its own windows under `--no-startup-window` |
