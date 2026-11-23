@@ -7,7 +7,6 @@ import { innermostGroupOf } from "../groups/groupNesting";
 import { withSplitRows } from "../splits/splits";
 import { bookmarkTabs, copyUrls, newGroupWithSelection } from "./actions";
 import { noteSelectionRemovedFromGroups } from "../telemetry/usage";
-import { consentToken } from "../telemetry/choice";
 import { bookmarksShown } from "../bookmarks/visibility";
 import { bookmarkFolderItems, groupItems, hintWhen, profileItems, sections, windowItems, withAlternate, type Destination } from "./menuParts";
 import { userClose, type ByUser } from "../tabs/closeActivation";
@@ -91,7 +90,6 @@ function sendTabs(windowId: string, ids: string[], profileId: string, to: Destin
 export async function openMultiMenu(windowId: string, shown: string[]) {
   const consent = consentToken();
   const f = multiTabMenuFacts(store(), windowId, shown);
-  const consent = consentToken();
   const choice = await chooseFromMenu(multiTabMenuItems(store(), windowId, shown, f));
   const s = store();
   const here = (list: string[]) => list.filter((id) => s.tabs[id]?.windowId === windowId);
