@@ -408,13 +408,13 @@ test("node_modules links that would leave the tree are found, scoped and nested 
 
   const inTreeAlias = scratch();
   write(inTreeAlias, "apps/desktop/node_modules/real/package.json", "{}");
-  fs.symlinkSync("desktop", join(inTreeAlias, "apps/linux"));
+  fs.symlinkSync("desktop", join(inTreeAlias, "apps/alias"));
   assert.deepEqual(lib.nodeModulesRoots(inTreeAlias), ["apps/desktop/node_modules"]);
   assert.deepEqual(lib.escapingLinks(inTreeAlias), []);
 
   const escapingAlias = scratch();
   fs.mkdirSync(join(escapingAlias, "apps"), { recursive: true });
-  fs.symlinkSync(outside, join(escapingAlias, "apps/linux"));
+  fs.symlinkSync(outside, join(escapingAlias, "apps/alias"));
   assert.throws(() => lib.nodeModulesRoots(escapingAlias), /is a symlink: its node_modules aren't this tree's/);
 });
 
