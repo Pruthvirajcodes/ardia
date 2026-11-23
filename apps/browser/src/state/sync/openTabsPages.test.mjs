@@ -5,23 +5,13 @@ const { Clock, emptyScope, syncScope } = await import("@ardia/sync");
 const { openTabsAdapters } = await import("./openTabs.ts");
 const { noteTabClosedByUser, openTabsClosed, recordOpenTabCloses } = await import("./openTabCloses.ts");
 const { holdsOpenTabs } = await import("./openTabsLocal.ts");
+const { openTabCloses } = await import("./scopeAdapters.ts");
 const { profileScope } = await import("./records.ts");
 
 const S = () => useBrowser.getState();
 const P = "default";
 const SCOPE = profileScope("pages");
 const page = (name) => `https://${name}.example/`;
-
-function openTabCloses(doc, scope) {
-  return {
-    keys: () => doc.tabCloses?.[scope] ?? [],
-    settle: (keys) => {
-      const left = (doc.tabCloses?.[scope] ?? []).filter((key) => !keys.includes(key));
-      if (left.length) (doc.tabCloses ??= {})[scope] = left;
-      else if (doc.tabCloses) delete doc.tabCloses[scope];
-    },
-  };
-}
 
 function pagesKeptFor(state, run) {
   const { set } = WeakMap.prototype;
