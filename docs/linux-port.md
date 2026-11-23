@@ -1,7 +1,7 @@
 # Ardia on Linux
 
-The Linux port runs the same browser UI as the Mac app on the same Chromium (158.0.8127.36) and Helium (0.22.1, with
-helium-linux 0.22.1.1) pins. It targets x86-64 Linux on Wayland, with Hyprland and Omarchy as the main desktop; X11
+The Linux port runs the same browser UI as the Mac app on the same Chromium (158.0.8127.36) and Helium (0.22.2, with
+helium-linux 0.22.2.1) pins. It targets x86-64 Linux on Wayland, with Hyprland and Omarchy as the main desktop; X11
 works, and arm64 builds are configured but untested. It answers upstream issue #1, "Linux Support".
 
 On the Mac, ArdiaCore is a framework that the React Native app hosts. On Linux there is no React Native: Chromium's own
@@ -114,8 +114,13 @@ The acceptance suite is in [linux-acceptance.md](linux-acceptance.md) and CI in 
   because its window or profile went away leaves the closed tab reopenable. Duplicating a tab (`clone:<key>`) clones
   its contents. Either falls back to loading the URL when nothing was saved. The host advertises this as
   `tab.adoptCopies`; without it the shell sends neither id, and the tab loads its URL instead of failing.
-- **Placement.** Rectangles arrive in CSS viewport coordinates and the host converts them. Native pages hide beneath
-  browser overlays and clip themselves.
+- **Placement.** Rectangles arrive in CSS viewport coordinates and the host converts them. `clippedRectOf` clips each
+  page slot to its `overflow`-clipping ancestors (such as `TabPane`) for `tab.viewport`, `shell.inputRegions`, page
+  holes and `clipRadii`, so an auto-hiding toolbar's tall page box never protrudes past the card's bottom or drops its
+  rounded corners. When the unclipped box overflows its clip, `tab.viewport` also carries `contentRect` (gated on
+  `tab.viewportClip`), and `ViewportView` clips the native page to `pane_bounds` (with its rounded corners) while
+  keeping the `WebContents` at `contentRect`'s height until the glide settles, avoiding per-frame page resizes. Native
+  pages hide beneath browser overlays and clip themselves.
 - **Tracking.** `watchTabViewport` measures a page's rectangle, overlays and coverage only when something changes: a
   DOM mutation, a resize, scroll or visibility change, a CSS transition or animation, or a page's own presentation
   change (`refreshTabViewports`). It measures at most once per animation frame. It keeps measuring each
@@ -461,8 +466,8 @@ export PYTHONDONTWRITEBYTECODE=1
 mkdir -p "$AC_CHROMIUM_BUILD"
 
 git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$AC_CHROMIUM_BUILD/depot_tools"
-git clone --depth 1 --branch 0.22.1 https://github.com/imputnet/helium-chromium.git "$AC_CHROMIUM_BUILD/helium"
-git clone --depth 1 --branch 0.22.1.1 https://github.com/imputnet/helium-linux.git "$AC_CHROMIUM_BUILD/helium-linux"
+git clone --depth 1 --branch 0.22.2 https://github.com/imputnet/helium-chromium.git "$AC_CHROMIUM_BUILD/helium"
+git clone --depth 1 --branch 0.22.2.1 https://github.com/imputnet/helium-linux.git "$AC_CHROMIUM_BUILD/helium-linux"
 git -C "$AC_CHROMIUM_BUILD/helium" fetch --depth 1 origin "$(sed -n 's/^helium_chromium_commit = //p' engine/patches/build/helium-pins.ini)"
 
 source engine/patches/build/env.sh
@@ -1604,7 +1609,29 @@ Linux reads calendars from Evolution Data Server, which GNOME Online Accounts, G
   - A 24-word BIP-39 phrase.
 - **Writes.** Files are staged `O_EXCL|O_NOFOLLOW` at 0600, fsynced, then published with
   `renameat2(RENAME_NOREPLACE)`. Everything below the chosen folder is opened with `openat`.
-- **Folder.** The default is `$HOME/Ardia Sync`, or `--ardia-sync-folder`.
+- **Folder.** Linux has no cloud drive to default to, so Settings › Sync › Turn On… asks where the folder goes
+  (`PLATFORM_FEATURES.defaultCloudDrive` is false): the chooser opens in the home folder, and the folder picked gets an
+  `Ardia Sync` folder inside it unless it is already named that or already holds sync data
+  (`state/sync/folderMove.ts` `syncFolderAt`). A picked folder that holds sync data goes to Enter Recovery Phrase
+  instead of starting a second chain. The engine still reports `$HOME/Ardia Sync`, or `--ardia-sync-folder`, as
+  `defaultPath`, which the chooser starts beside and nothing creates. Once a folder is chosen, Turn On uses it.
+- **Moving.** While Sync is on, Settings › Sync › Sync Folder › Move… (also Advanced… › Move Sync Folder…) moves it
+  (`PLATFORM_FEATURES.movesSyncFolder`). The sync window holds its cycles, then: a folder inside the current folder or
+  holding it, or one with another phrase's data, is refused; so is a folder that can't be written; a folder that
+  already holds this phrase's chain and every file of the old one is only pointed at; otherwise the files of this
+  chain the new folder lacks are read and written into it through the native calls (into its existing chain, if it has
+  one), the new folder is checked to hold every file of the old one, and only then does sync use it. A read of the new
+  folder that fails is a failed move. The scopes copied are the ones known here plus every profile the old folder's
+  own app scope names (`listedProfileScopes`), so a profile another device added since the last cycle moves too. A
+  failed copy removes the files it wrote and keeps the new chain, empty: deleting a chain is recursive, so it could
+  take a file another device wrote there after any check. A later move into that folder completes the chain instead of
+  pointing at it, since it lacks the old folder's files. The cleanup is best effort: if a removal fails, part of the
+  copy can stay in the new folder, which Sync doesn't use. Files still downloading into the current folder refuse the
+  move whenever that folder can be read, before the new folder is compared, since the move can't tell yet whether the
+  new folder holds them. Turning Sync off or Sync Now during a move waits for the move, then runs. The old folder
+  stays as it was, because other devices may still sync through it. When the old folder is gone, a folder holding this
+  chain with files in it is pointed at and an empty one refused. Pointing at the folder after moving it by hand in a
+  file manager is that re-point, so Sync going offline after such a move is fixed from here too.
 - **Key.** The sync key is a Secret Service item, "Ardia Sync Key" (schema `dev.ardia.linux.SyncKey`). Showing,
   copying or saving the recovery words asks polkit, then allows 60 s.
 - **One authority.** Only one browser renderer syncs: it holds a Web Lock plus a native lease that expires 30 s after
