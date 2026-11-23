@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View, type ViewInstance } from "react-native";
 import Animated, { FadeIn, FadeOut, LayoutAnimationConfig } from "react-native-reanimated";
 import { refreshDefaultBrowser, useDefaultBrowser } from "../../state/settings/defaultBrowser";
 import { offersDefaultBrowser } from "../../state/settings/settingsRules";
@@ -12,17 +12,20 @@ import { wallpaperColorsEnabled } from "../../lib/material/schemePick";
 import { usePreferences } from "../../state/settings/hooks";
 import { closeSettings, pushSettings } from "../../state/settings/nav";
 import { AUTO_ARCHIVE_INTERVALS, autoArchiveTitle, type AutoArchiveInterval } from "../../state/tabs/tabModels";
-import { controlRadius, duration, font, materialYouOffered, settingsLayout, settingsTint, space, Symbol, useDesign, useTheme, useWarningInk } from "../ui";
+import { controlRadius, duration, font, materialYouOffered, settingsLayout, settingsTint, space, Symbol, useDesign, useTheme, useWarningInk, Tappable } from "../ui";
 import { PHONE_SHARING_COPY } from "../../lib/telemetryCopy";
 import { setUsageSharing, useUsageSharing } from "../../state/telemetry/telemetry";
 import { AppearanceRow, ColorRow, MatchMyMac } from "./AppearancePage";
+import { focusForScreenReader } from "../ui/coverFocus";
 import { BarButton, Group, IconTile, NavRow, PickerRow, SettingsPage, ToggleRow } from "./SettingsKit";
+import type { SettingsReveal } from "./settingsReveal";
 import { syncOffered } from "../../state/sync/offer";
 import { browseForMeOffered, refreshChatGPTConnected, useChatGPTConnected } from "../../state/browseForMe/store";
 import { browseForMeRowValue } from "../../state/browseForMe/copy";
 import { pageSummaryChoiceOffered, refreshPageSummaryProvider, usePageSummaryProvider } from "../../state/pageSummary/store";
 import { pageSummaryRowValue } from "../../state/pageSummary/copy";
 import { refreshPageSummariesEnabled, usePageSummariesEnabled } from "../../state/pageSummary/enabled";
+import { destinationWords, dismissWords } from "../../lib/sharedWords";
 
 const APP_LINKS = [
   { id: "ardia" as const, title: "Ardia" },
@@ -51,6 +54,19 @@ export function SettingsRoot() {
   const design = useDesign();
   const redesigned = design === "redesigned";
   const material = design === "material";
+  const materialSwitch = useRef<ViewInstance>(null);
+  const reveal = useRef<SettingsReveal>(null);
+  const restoreSwitchFocus = useRef(false);
+  useEffect(() => {
+    if (!restoreSwitchFocus.current) return;
+    restoreSwitchFocus.current = false;
+    reveal.current?.(materialSwitch.current);
+    return focusForScreenReader(() => materialSwitch.current);
+  }, [material]);
+  const changeMaterialYou = (value: boolean) => {
+    restoreSwitchFocus.current = true;
+    setMaterialYou(value);
+  };
   const dynamicColors = wallpaperColorsEnabled(usePreferences((p) => p.colorChoice), usePreferences((p) => p.dynamicColors));
   const chatGPT = useChatGPTConnected();
   const summaryProvider = usePageSummaryProvider();
@@ -63,15 +79,16 @@ export function SettingsRoot() {
     void refreshPageSummariesEnabled();
   }, []);
   return (
-    <SettingsPage title="Settings" mediumAppBar onClose={material ? closeSettings : undefined} trailing={material ? undefined : <BarButton title="Done" emphasized onPress={closeSettings} />}>
+    <SettingsPage title={destinationWords.settings} mediumAppBar revealRef={reveal} onClose={material ? closeSettings : undefined} trailing={material ? undefined : <BarButton title={dismissWords.done} emphasized onPress={closeSettings} />}>
       {syncOffered() ? (
         <Group>
           <SyncCard stacks={stacks} />
         </Group>
       ) : null}
       <View testID="settingsShortcuts" style={[styles.shortcuts, { flexDirection: stacks ? "column" : "row" }]}>
-        <Pressable
-          accessibilityRole="button"
+        <Tappable
+          kind="filled"
+          label={destinationWords.archive}
           onPress={() => {
             closeSettings();
             openArchive();
@@ -80,11 +97,12 @@ export function SettingsRoot() {
           style={[styles.shortcut, stacks ? null : styles.fill, { backgroundColor: theme.groupFill }]}
         >
           <Symbol name="archivebox" size={20} color={theme.label} />
-          <Text style={[font.body, styles.medium, { color: theme.label }]}>Archive</Text>
-        </Pressable>
+          <Text style={[font.body, styles.medium, { color: theme.label }]}>{destinationWords.archive}</Text>
+        </Tappable>
         {syncOffered() ? (
-          <Pressable
-            accessibilityRole="button"
+          <Tappable
+            kind="filled"
+            label={destinationWords.spaces}
             onPress={() => {
               closeSettings();
               openSpaces();
@@ -93,8 +111,8 @@ export function SettingsRoot() {
             style={[styles.shortcut, stacks ? null : styles.fill, { backgroundColor: theme.groupFill }]}
           >
             <Symbol name="squareStack" size={20} color={theme.label} />
-            <Text style={[font.body, styles.medium, { color: theme.label }]}>Spaces</Text>
-          </Pressable>
+            <Text style={[font.body, styles.medium, { color: theme.label }]}>{destinationWords.spaces}</Text>
+          </Tappable>
         ) : null}
       </View>
       <Group header="General">
@@ -112,7 +130,7 @@ export function SettingsRoot() {
           </>
         )}
         {material ? null : <View style={[styles.divider, { backgroundColor: theme.separator }]} />}
-        {materialYouOffered() ? <ToggleRow title="Material You" icon="handDrawFill" tint={settingsTint.nightShade} value={material} divider onChange={setMaterialYou} /> : null}
+        {materialYouOffered() ? <ToggleRow buttonRef={materialSwitch} title="Material You" icon="handDrawFill" tint={settingsTint.nightShade} value={material} divider onChange={changeMaterialYou} /> : null}
         <NavRow title="Site Settings" icon="globe" tint={settingsTint.neutral} divider onPress={() => pushSettings({ page: "siteSettings" })} />
         {offersDefault ? <NavRow title="Default Browser" icon="safariFill" tint={settingsTint.defaultBrowser} divider onPress={() => pushSettings({ page: "defaultBrowser" })} /> : null}
         <PickerRow title="Open App Links In" icon="arrowUpForwardAppFill" tint={settingsTint.appLinks} options={APP_LINKS} selected={appLinks} onSelect={setAppLinks} />
@@ -177,7 +195,7 @@ function SyncCard({ stacks }: { stacks: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Sync With Mac"
+      accessibilityLabel={destinationWords.sync}
       accessibilityValue={{ text: line.text }}
       onPress={() => pushSettings({ page: "sync" })}
       style={({ pressed }) => [styles.syncCard, pressed ? { backgroundColor: theme.rowHighlight } : null]}
@@ -185,7 +203,7 @@ function SyncCard({ stacks }: { stacks: boolean }) {
       <View testID="syncCardContent" style={[styles.fill, stacks ? styles.syncStacked : styles.syncBeside]}>
         <IconTile icon="macAndPhone" tint={settingsTint.sync} side={stacks ? settingsLayout.syncTileLarge : settingsLayout.syncTile} />
         <View style={styles.syncText}>
-          <Text style={[font.title3, styles.bold, { color: theme.label }]}>Sync With Mac</Text>
+          <Text style={[font.title3, styles.bold, { color: theme.label }]}>{destinationWords.sync}</Text>
           <LayoutAnimationConfig skipEntering>
             <Animated.Text
               key={line.text}

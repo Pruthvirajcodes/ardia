@@ -3,7 +3,7 @@ import { cleanUrl } from "./cleanUrl.ts";
 import { displayHost, punycodeEncode } from "./idn.ts";
 import { PSL_TLDS } from "./tlds.ts";
 
-export type ParsedUrl = { scheme: string; host: string; port: string; path: string; query: string; hash: string };
+type ParsedUrl = { scheme: string; host: string; port: string; path: string; query: string; hash: string };
 
 const URL_PARTS = /^([a-z][a-z0-9+.-]*):\/\/(?:[^@/?#]*@)?(\[[^\]]*\]|[^:/?#]*)(?::(\d+))?([^?#]*)(\?[^#]*)?(#.*)?$/i;
 
@@ -154,8 +154,12 @@ function fixup(raw: string): string | null {
   return host.port || path.endsWith("/") || parts > 1 ? `${proto}://${input}` : null;
 }
 
+const SURROGATE_PAIR_OR_LONE = /[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g;
+
+const wellFormed = (text: string) => text.replace(SURROGATE_PAIR_OR_LONE, (unit) => (unit.length === 2 ? unit : "\uFFFD"));
+
 export function searchUrlFor(template: string, query: string): string {
-  const q = encodeURIComponent(query.trim());
+  const q = encodeURIComponent(wellFormed(query.trim()));
   return template.includes("%s") ? template.replace(/%s/g, q) : template + q;
 }
 

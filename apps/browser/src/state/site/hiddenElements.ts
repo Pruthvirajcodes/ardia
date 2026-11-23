@@ -18,6 +18,7 @@ import {
   noteElementPickerFromContextMenu,
   noteElementPickRefused,
   noteElementPickUnconfirmed,
+  noteElementPickUnsavable,
   noteHiddenElementsRestored,
   noteHiddenElementWriteFailure,
   notePickedSelectorEscaped,
@@ -28,7 +29,7 @@ const HIDING_RULE = /^[a-z0-9.-]+##(?![+^\s])(?!.*\/\*)[^\0-\x1f\x7f\x85\u2028\u
 const MAX_FILTER = 1024;
 
 export type HiddenElement = { filter: string; host: string; selector: string; session: boolean };
-export type PickResult = { selector?: string; cancelled?: boolean; refused?: boolean } | null;
+type PickResult = { selector?: string; cancelled?: boolean; refused?: boolean } | null;
 
 export function hidingHost(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -42,9 +43,14 @@ export function hidingHost(url: string | null | undefined): string | null {
   }
 }
 
+const CSS_ESCAPE = /\\[0-9a-fA-F]{1,6} ?|\\[^\n\r\f0-9a-fA-F]/g;
+const PICKER_SELECTOR = /^(?:[-\w.#>\s\u0080-\uffff]|\[[-\w]+="[^"\\]*"\]|:nth-of-type\(\d+\))+$/;
+
+const inPickerGrammar = (selector: string) => PICKER_SELECTOR.test(selector.replace(CSS_ESCAPE, "a"));
+
 export function hidingFilter(host: string, selector: string): string | null {
   const filter = `${host}##${selector.trim()}`;
-  return filter.length <= MAX_FILTER && HIDING_RULE.test(filter) ? filter : null;
+  return filter.length <= MAX_FILTER && HIDING_RULE.test(filter) && inPickerGrammar(selector.trim()) ? filter : null;
 }
 
 const PICKED_ATTRIBUTE = /\[(data-testid|data-test-id|data-test|data-qa|data-component|data-module)="([^"\\]*)"\]/g;
@@ -130,8 +136,6 @@ export function acceptedPick(result: PickResult, confirmed: boolean, samePage: b
 
 const picking = new Set<string>();
 
-export const isPickingElement = (tabId: string) => picking.has(tabId);
-
 export async function startHidingElement(tabId: string, point: [number, number] | null = null) {
   const page = pageOf(tabId);
   const web = webviews.get(tabId);
@@ -169,7 +173,10 @@ export async function startHidingElement(tabId: string, point: [number, number] 
   const savable = picked ? savablePickedSelector(picked) : null;
   const filter = savable ? hidingFilter(page.host, savable) : null;
   if (!filter) {
-    if (picked) void web.evaluate(pickerCall("unhide", [picked]));
+    if (picked) {
+      noteElementPickUnsavable(consent);
+      void web.evaluate(pickerCall("unhide", [picked]));
+    }
     return void noteElementPickerCancelled(consent);
   }
   const selector = filter.slice(filter.indexOf("##") + 2);

@@ -1,3 +1,4 @@
+import { actionWords, listWords } from "../../lib/sharedWords";
 import { useEffect, useRef } from "react";
 import { Platform, Pressable, StyleSheet, Text, View, type ViewInstance } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
@@ -6,7 +7,7 @@ import type { MaterialScheme } from "../../lib/material/schemes";
 import { menuOpenedHaptic } from "../../state/browse/tabMenus";
 import { useCanReopen } from "../../state/tabs/hooks";
 import { noteDeckBarTop, watchDeckBar } from "../../state/toasts/store";
-import { Symbol, type MenuItem } from "../ui";
+import { Symbol } from "../ui";
 import { MATERIAL_STATE } from "../ui/materialRoles";
 import { materialBottomBar, materialDuration, materialMove, materialShape, materialSize, materialType } from "../ui/materialTokens";
 import { MenuTrigger } from "../ui/MenuTrigger";
@@ -64,11 +65,11 @@ export function MaterialDeckTopBar({ safeTop, safeSide, incognito, privateCount,
   const { syncEnabled, spaces, current, spaceItems } = useDeckSpaces();
   const side = safeSide + MATERIAL_DECK.barSide;
   const below = safeTop + materialSize.topAppBar;
-  const menu = { trigger: "tap" as const, fixedOrder: true, haptic: menuOpenedHaptic, disabled: !menusShown, onOpen: () => onMenu(true), onClose: () => onMenu(false) };
-  const moreItems = deckMoreMenuItems({ syncEnabled, canReopen, hasTabs, onCloseAll });
+  const menu = { trigger: "tap" as const, fixedOrder: true, haptic: menuOpenedHaptic, disabled: !menusShown, privately: incognito, onOpen: () => onMenu(true), onClose: () => onMenu(false) };
+  const moreItems = deckMoreMenuItems({ syncEnabled, canReopen, hasTabs, onCloseAll, material: true });
   const title = current?.name ?? "Tabs";
   return (
-    <Animated.View testID="materialDeckTopBar" pointerEvents="box-none" style={[styles.topBar, { paddingTop: safeTop, height: safeTop + materialSize.topAppBar, paddingHorizontal: side, backgroundColor: scheme.surface }, chromeStyle]}>
+    <Animated.View testID="materialDeckTopBar" pointerEvents="box-none" style={[styles.topBar, { paddingTop: safeTop, height: safeTop + materialSize.topAppBar, paddingHorizontal: side }, chromeStyle]}>
       <View style={styles.titleSlot}>
         {current && spaces.length > 1 ? (
           <MenuTrigger items={spaceItems} {...menu} place={{ top: below, left: side + MATERIAL_DECK.titleInset }}>
@@ -82,7 +83,7 @@ export function MaterialDeckTopBar({ safeTop, safeSide, incognito, privateCount,
                 onPress={onPress}
                 style={styles.spaceButton}
               >
-                <Text numberOfLines={1} style={[materialType.titleLarge, styles.shrink, { color: scheme.onSurface }]}>
+                <Text numberOfLines={1} style={[materialType.titleMedium, styles.shrink, { color: scheme.onSurface }]}>
                   {current.name}
                 </Text>
                 <Symbol name="chevronDown" size={materialSize.icon} color={scheme.onSurfaceVariant} />
@@ -90,13 +91,13 @@ export function MaterialDeckTopBar({ safeTop, safeSide, incognito, privateCount,
             )}
           </MenuTrigger>
         ) : (
-          <Text testID="materialDeckTitle" accessibilityRole="header" numberOfLines={1} style={[materialType.titleLarge, styles.title, { color: scheme.onSurface }]}>
+          <Text testID="materialDeckTitle" accessibilityRole="header" numberOfLines={1} style={[materialType.titleMedium, styles.title, { color: scheme.onSurface }]}>
             {title}
           </Text>
         )}
       </View>
       <MenuTrigger items={moreItems} {...menu} place={{ top: below, right: side }}>
-        {({ onPress }) => <MaterialIconButton testID="materialDeckMore" icon="ellipsis" label="More" scheme={scheme} turned onPress={onPress ?? noop} />}
+        {({ onPress }) => <MaterialIconButton testID="materialDeckMore" icon="ellipsis" label={actionWords.more} scheme={scheme} turned onPress={onPress ?? noop} />}
       </MenuTrigger>
     </Animated.View>
   );
@@ -156,7 +157,7 @@ export function MaterialDeckEmpty({ centerY, showsArchive, onArchive, searching 
   const scheme = useDeckScheme(incognito);
   return (
     <View testID="materialDeckEmpty" pointerEvents="box-none" style={[styles.empty, { top: centerY - materialSize.listItemTwoLine }]}>
-      <Text style={[materialType.titleLarge, styles.centered, { color: scheme.onSurface }]}>{searching ? "No Matching Tabs" : "No Open Tabs"}</Text>
+      <Text style={[materialType.titleLarge, styles.centered, { color: scheme.onSurface }]}>{searching ? listWords.noResults : "No Open Tabs"}</Text>
       {searching ? null : <Text style={[materialType.bodyMedium, styles.centered, { color: scheme.onSurfaceVariant }]}>Tabs you open appear here. Inactive tabs move to the Archive.</Text>}
       {showsArchive && !searching ? (
         <Pressable accessibilityRole="button" android_ripple={ripple(scheme, scheme.primary)} onPress={onArchive} style={styles.textButton}>

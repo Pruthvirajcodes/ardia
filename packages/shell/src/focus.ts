@@ -1,4 +1,4 @@
-export type KeyHoldDrop = "modified" | "edit" | "character" | "dead" | "ime" | "mouse" | "window" | "command" | "cancelled" | "focus" | "reload" | "site" | "capacity" | "timeout";
+type KeyHoldDrop = "modified" | "edit" | "character" | "dead" | "ime" | "mouse" | "window" | "command" | "cancelled" | "focus" | "reload" | "site" | "capacity" | "timeout";
 
 export type KeyHoldCounts = { holds: number; replayed: number; drops: Partial<Record<KeyHoldDrop, number>> };
 
@@ -15,6 +15,7 @@ export type FocusNative = {
   restoreKeyResponder(token: number): Promise<boolean>;
   discardKeyResponder(token: number): Promise<void>;
   switcherPointerMoved(): boolean;
+  takeHoverCounts?(): Record<string, Record<string, number>>;
   pressesWithoutRelease(): number;
   takeFocusHandoffCounts?(): Record<string, Record<string, number>>;
   setConsentEpoch?(epoch: string): void;
