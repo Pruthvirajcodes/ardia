@@ -36,6 +36,7 @@ import { popupBlocked, showAutofillPrompt, showExternalApp, showPasswordPrompt }
 import { fieldProviderHint, fieldProviderOpened, verificationCodeFound, type FieldProviderHint, type FieldProviderOpened, type VerificationCodeFound } from "../../state/site/passwordManager";
 import { verificationCodeDocument, verificationCodeTabGone } from "../../state/site/verificationCodes";
 import { hoverStatus } from "../../state/tabs/hoverStatus";
+import { endPageDocument, forgetPageDocument, notePageDocument } from "../../state/plugins/pageBarDocuments";
 import { leftPage, pageAskedToClose, pageEnded } from "../../state/tabs/pageEvents";
 import { copyLinkToSelection, searchSelection, setPageSelection } from "../../state/site/selection";
 import { shareFromPage } from "../../state/site/share";
@@ -61,6 +62,7 @@ import { STATUS_FLIP_BAND } from "./tokens";
 import { startHidingElement } from "../../state/site/hiddenElements";
 import { forgetPeekHandover, notePeekRecipient, peekDonorTaken } from "../../state/peek/donors";
 import { promotedFromPeek } from "../../state/peek/actions";
+import { consumedCallbackUrl } from "../../state/tabs/callbackUrls";
 
 const webViewTab = (t: Tab | undefined) => ({ navigation: navigationOf(t), adoptId: adoptOf(t), profileId: t?.profileId ?? "", shownUrl: t?.url ?? "" });
 
@@ -133,9 +135,11 @@ function EngineWebView({ tabId, visible, selected = true, warm, peekOf, engine, 
     void webviews.get(tabId)?.loadUrl(navigation.url, { userInitiated: !!navigation.userInitiated });
   }, [seq]);
   const fromNewTab = useRef(pageOf(tabId).wasNewTab && !adoptId);
+  const documentReporter = useRef({}).current;
   useEffect(() => {
     persistEngine(tabId, engine);
     return () => {
+      forgetPageDocument(tabId, documentReporter);
       if (wentRetired.current) return;
       if (handedToTab()) return forgetPeekHandover(tabId);
       noteGone(tabId);
@@ -211,8 +215,10 @@ function EngineWebView({ tabId, visible, selected = true, warm, peekOf, engine, 
         watchFirstPaint(tabId, engine, visible);
       }}
       onNavigationChange={({ url: reported, title: reportedPageTitle, canGoBack, canGoForward, isLoading, themeColor, themeColorSource, initialDocumentAccessed, committedInitial, committedUrl, committedAt, httpStatus }) => {
+        if (consumedCallbackUrl(tabId, reported, committedUrl)) return;
         noteCommit(tabId, committedUrl, committedAt, httpStatus);
         verificationCodeDocument(tabId, committedAt);
+        notePageDocument(tabId, reported, committedUrl, committedAt, isIncognitoProfile(profileId), documentReporter);
         if (reopening.current && reported && !isBlankAddress(reported)) {
           reopening.current = false;
           noteReopenedPage(canGoBack);
@@ -301,6 +307,7 @@ function EngineWebView({ tabId, visible, selected = true, warm, peekOf, engine, 
         patchPage(tabId, status ? { status: hoverStatus(status), statusAtTop } : { status });
       }}
       onCrashed={(crashed) => {
+        if (crashed) endPageDocument(tabId, documentReporter);
         if (!isQuitting()) {
           pageEnded(tabId);
           patchPage(tabId, { crashed, unresponsive: false, fullscreen: false, status: "" });
@@ -354,6 +361,7 @@ function EngineWebView({ tabId, visible, selected = true, warm, peekOf, engine, 
       onVerificationCodeFound={(found: VerificationCodeFound) => verificationCodeFound(tabId, found)}
       onNotificationClose={closeWebNotification}
       onDiscarded={(url, reason) => {
+        endPageDocument(tabId, documentReporter);
         releaseTranslation(tabId);
         pending.current = url;
         fromNewTab.current = false;

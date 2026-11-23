@@ -1,3 +1,4 @@
+import type { CleanedUrl } from "@ardia/core";
 import type { EventSubscription } from "expo-modules-core";
 import type { BangListReply } from "./documents";
 
@@ -28,6 +29,8 @@ export type AppEvent =
   | { type: "littleArdiaGlobalShortcut" }
   | { type: "littleArdiaGlobalShortcutBehind" }
   | { type: "windowDragLoop"; epoch: string }
+  | { type: "windowDragNative"; epoch: string }
+  | { type: "windowDragTakeover"; epoch: string }
   | {
       type: "pasteRefused";
       reason: string;
@@ -56,5 +59,6 @@ export type ShellNative = {
   dictationAvailable?(): boolean;
   fetchBangList(etag: string | null): Promise<BangListReply>;
   copyText(text: string): void;
+  copyURL?(address: CleanedUrl): void;
   readText(): Promise<string>;
 };
