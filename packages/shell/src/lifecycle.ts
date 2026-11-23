@@ -1,3 +1,4 @@
+import type { CleanedUrl } from "@ardia/core";
 import type { EventSubscription } from "expo-modules-core";
 import type { BangListReply } from "./documents";
 
@@ -22,12 +23,14 @@ export type AppEvent =
   | { type: "appLinkOpened"; windowId: string | null }
   | { type: "littleArdiaReturnedToApp" }
   | { type: "littleArdiaReturnDropped"; count: number }
-  | { type: "littleArdiaLinkKeptBehind"; when: "activation" | "arrival" | "open" | "released" | "stageManager" | "keyRestored" | "windowManager" }
+  | { type: "littleArdiaLinkKeptBehind"; when: "activation" | "arrival" | "open" | "released" | "stageManager" | "keyRestored" | "windowManager" | "raiseSkipped" }
   | { type: "windowTitleRead"; epoch: string }
   | { type: "keyHoldReplay"; tag: number; count: number }
   | { type: "littleArdiaGlobalShortcut" }
   | { type: "littleArdiaGlobalShortcutBehind" }
   | { type: "windowDragLoop"; epoch: string }
+  | { type: "windowDragNative"; epoch: string }
+  | { type: "windowDragTakeover"; epoch: string }
   | {
       type: "pasteRefused";
       reason: string;
@@ -56,5 +59,6 @@ export type ShellNative = {
   dictationAvailable?(): boolean;
   fetchBangList(etag: string | null): Promise<BangListReply>;
   copyText(text: string): void;
+  copyURL?(address: CleanedUrl): void;
   readText(): Promise<string>;
 };

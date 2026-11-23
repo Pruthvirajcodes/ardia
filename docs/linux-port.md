@@ -1,7 +1,7 @@
 # Ardia on Linux
 
-The Linux port runs the same browser UI as the Mac app on the same Chromium (158.0.8127.36) and Helium (0.22.1, with
-helium-linux 0.22.1.1) pins. It targets x86-64 Linux on Wayland, with Hyprland and Omarchy as the main desktop; X11
+The Linux port runs the same browser UI as the Mac app on the same Chromium (158.0.8127.36) and Helium (0.22.2, with
+helium-linux 0.22.2.1) pins. It targets x86-64 Linux on Wayland, with Hyprland and Omarchy as the main desktop; X11
 works, and arm64 builds are configured but untested. It answers upstream issue #1, "Linux Support".
 
 On the Mac, ArdiaCore is a framework that the React Native app hosts. On Linux there is no React Native: Chromium's own
@@ -15,14 +15,14 @@ The acceptance suite is in [linux-acceptance.md](linux-acceptance.md) and CI in 
 
 | Path | What |
 | --- | --- |
-| `apps/linux` | The Linux UI entry point. Vite builds it from the shared `apps/browser` components into `apps/linux/dist`. It holds the Linux adapters (native modules, WebView, menus, window controls, wording transforms) and the acceptance suite. |
+| `apps/desktop` | The desktop UI entry point, shared by Linux and the coming Windows WebUI host. `vite build --mode linux` builds it from the shared `apps/browser` components into `apps/desktop/dist/linux` (`--mode win` into `dist/win`). It holds the desktop adapters (native modules, WebView, menus, window controls) and the acceptance suite; Linux-only code (tiling, the GTK button layout, keyring and polkit wording, the EDS calendar, the tarball self-update, the sandbox notice) sits in `src/platform/linux`, reached through `@platform/<name>` seams that resolve `<name>.linux.ts` or `<name>.win.ts` before `<name>.desktop.ts`. |
 | `engine/ardiacore-linux` | The Aura host and every Linux-only native service (`src/ardia/linux/ac_linux_*`), the content blocker's bridge page, and their tests. It is the Linux patch-series layer. |
 | `engine/chromium/src/chrome/browser/ardia` | The shared engine services (`ac_*`), the `ardia` command's token server (`ac_cli_control.cc`, `ac_cli_token_policy*`) included. Linux-only parts are `ac_reauth_linux.*`, `pip/ac_pip_linux.cc` and `pip/ac_pip_hyprland.*`, behind `is_linux` in `BUILD.gn`. |
 | `engine/patches/chromium-linux-*.patch` | Chromium hooks the Linux host needs. They are selected with `linux` in `engine/patches/series`. |
 | `scripts/linux` | Build, package, install, engine publish and fetch, smoke gate, CI checks, the polkit policy and the Arch `PKGBUILD`. |
 | `.github/workflows/linux.yml` | The Linux workflow ([linux-ci.md](linux-ci.md)). |
 
-`packages/demo` (the ardia.dev web demo) has no Linux code and nothing under `apps/linux` imports it.
+`packages/demo` (the ardia.dev web demo) has no Linux code and nothing under `apps/desktop` imports it.
 
 ## Architecture
 
@@ -51,7 +51,7 @@ The acceptance suite is in [linux-acceptance.md](linux-acceptance.md) and CI in 
 - **CSP.** The shell's policy is `default-src 'none'`, `script-src 'self'`, `connect-src 'none'`, `frame-src 'none'`,
   `object-src 'none'`, `form-action 'none'`, and `trusted-types ardia-symbols`. The UI can't reach the network.
   Search suggestions, live folders, favicons, import and telemetry all go through native services. The one Trusted Types policy
-  renders the generated icon markup (`apps/linux/src/shims/web/Symbol.tsx`).
+  renders the generated icon markup (`apps/desktop/src/shims/web/Symbol.tsx`).
 - **The bridge.** `window.__ardiaHost` is defined by the generated `bootstrap.js` before any Vite module runs. Its
   bootstrap reports `appBuild: "linux-host"`. A request is accepted only when `ShellHostView::Trusted()` holds:
   - it comes from the host's own shell `WebContents`;
@@ -71,7 +71,7 @@ The acceptance suite is in [linux-acceptance.md](linux-acceptance.md) and CI in 
   The dispatcher routes only generated, known service names, and `AC_ENGINE_ABI_VERSION` stays 2. Unknown names
   answer `ERR_UNKNOWN_CALL`. The bootstrap lists the capabilities a host serves, and Settings hides rows whose backend
   is absent rather than showing a control that fails.
-- **Mac-only modules.** These answer from `apps/linux/src/appModuleFallbacks.ts`, either with an honest empty value or
+- **Mac-only modules.** These answer from `apps/desktop/src/appModuleFallbacks.ts`, either with an honest empty value or
   with `ERR_UNAVAILABLE`.
 - **Page options without a backend.** The shared UI mirrors a few settings to the engine at every launch
   (`webView.setVideoUpscaling`, `setCommandScrollZoom`, `setDisplayMediaPicker`, `setPeekOtherSiteTabs`,
@@ -114,8 +114,13 @@ The acceptance suite is in [linux-acceptance.md](linux-acceptance.md) and CI in 
   because its window or profile went away leaves the closed tab reopenable. Duplicating a tab (`clone:<key>`) clones
   its contents. Either falls back to loading the URL when nothing was saved. The host advertises this as
   `tab.adoptCopies`; without it the shell sends neither id, and the tab loads its URL instead of failing.
-- **Placement.** Rectangles arrive in CSS viewport coordinates and the host converts them. Native pages hide beneath
-  browser overlays and clip themselves.
+- **Placement.** Rectangles arrive in CSS viewport coordinates and the host converts them. `clippedRectOf` clips each
+  page slot to its `overflow`-clipping ancestors (such as `TabPane`) for `tab.viewport`, `shell.inputRegions`, page
+  holes and `clipRadii`, so an auto-hiding toolbar's tall page box never protrudes past the card's bottom or drops its
+  rounded corners. When the unclipped box overflows its clip, `tab.viewport` also carries `contentRect` (gated on
+  `tab.viewportClip`), and `ViewportView` clips the native page to `pane_bounds` (with its rounded corners) while
+  keeping the `WebContents` at `contentRect`'s height until the glide settles, avoiding per-frame page resizes. Native
+  pages hide beneath browser overlays and clip themselves.
 - **Tracking.** `watchTabViewport` measures a page's rectangle, overlays and coverage only when something changes: a
   DOM mutation, a resize, scroll or visibility change, a CSS transition or animation, or a page's own presentation
   change (`refreshTabViewports`). It measures at most once per animation frame. It keeps measuring each
@@ -244,7 +249,7 @@ The acceptance suite is in [linux-acceptance.md](linux-acceptance.md) and CI in 
   - 256 refusals mute that document.
 - **Evaluation.** `evaluate` runs only fixed, hash-pinned operations, and anything else gets
   `ERR_PAGE_EVALUATION_REFUSED`.
-  - `apps/linux/scripts/page-operations.mjs --write` generates the table (`ac_linux_page_operations.h`) from the shared
+  - `apps/desktop/scripts/page-operations.mjs --write` generates the table (`ac_linux_page_operations.h`) from the shared
     sources; `--check` and `pageOperations.test.mjs` fail when it is stale.
   - Reader view uses six of them. `readerCheck`, `readerState` and `readerHide` are fixed texts. `readerToggle`,
     `readerOpen` and `readerSetLook` pin everything before the look and a fixed suffix after it. The host accepts only
@@ -436,13 +441,13 @@ fake device, "Ardia Test Sink", and records routes without sending anything anyw
   - `platform/livePersistence.ts` (the default writes `live.json` with the same 800 ms debounce as before);
   - `decideWindowClose`/`decideLastTabClose` factored out of `state/windows/windowClose.ts`;
   - test ids on the extension popup.
-- **Linux overrides.** Linux replaces shared modules through its own Vite aliases (`apps/linux/vite.config.ts`).
-  Its wording transforms (`linuxWording.ts`, `credentialWording.ts`, `syncWording.ts`, `calendarWording.ts`) rewrite
+- **Linux overrides.** Linux replaces shared modules through its own Vite aliases (`apps/desktop/vite.config.ts`).
+  Its wording transforms (`src/platform/linux/wording/`: `linuxWording.ts`, `credentialWording.ts`, `syncWording.ts`, `calendarWording.ts`) rewrite
   exact strings at build time and fail the build when a shared string they replace changes. Mac wording can't ship on
   Linux, and the Linux copy can't drift silently.
 - **Engine fetch.** `packages/ardiacore/scripts/fetch-engine.sh --arch linux-x86_64` dispatches to
   `scripts/linux/fetch-engine.sh`; without `--arch` the Mac path is unchanged.
-- **Proof.** `pnpm --filter @ardia/linux test:graph` asserts that the Linux production module graph loads nothing
+- **Proof.** `pnpm --filter @ardia/desktop test:graph` asserts that the Linux production module graph loads nothing
   from `packages/demo` and only the Linux adapters it means to.
 
 ## Building on Linux
@@ -450,7 +455,7 @@ fake device, "Ardia Test Sink", and records routes without sending anything anyw
 Use a dedicated build root, apart from any Mac Chromium tree. `01-sync.sh` is for a fresh tree and refuses to run
 when an output directory exists; after that, builds are incremental.
 
-Provision Chromium's Linux build dependencies first, along with Node 24, pnpm 11, Python 3, Git, util-linux `flock`,
+Provision Chromium's Linux build dependencies first, along with Node 24, pnpm 12, Python 3, Git, util-linux `flock`,
 and ImageMagick or Pillow. Helium's Docker build environment is a useful reference.
 
 ```bash
@@ -461,16 +466,21 @@ export PYTHONDONTWRITEBYTECODE=1
 mkdir -p "$AC_CHROMIUM_BUILD"
 
 git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$AC_CHROMIUM_BUILD/depot_tools"
-git clone --depth 1 --branch 0.22.1 https://github.com/imputnet/helium-chromium.git "$AC_CHROMIUM_BUILD/helium"
-git clone --depth 1 --branch 0.22.1.1 https://github.com/imputnet/helium-linux.git "$AC_CHROMIUM_BUILD/helium-linux"
+git clone --depth 1 --branch 0.22.2 https://github.com/imputnet/helium-chromium.git "$AC_CHROMIUM_BUILD/helium"
+git clone --depth 1 --branch 0.22.2.1 https://github.com/imputnet/helium-linux.git "$AC_CHROMIUM_BUILD/helium-linux"
 git -C "$AC_CHROMIUM_BUILD/helium" fetch --depth 1 origin "$(sed -n 's/^helium_chromium_commit = //p' engine/patches/build/helium-pins.ini)"
 
 source engine/patches/build/env.sh
 scripts/agent/locked chromium -- engine/patches/build/01-sync.sh --apply
-scripts/agent/locked chromium -- python3 engine/patches/build/03-helium.py --platform linux --apply
+scripts/agent/locked chromium -- python3 scripts/engine/run-step3.py --platform linux --apply
+scripts/agent/locked chromium -- python3 scripts/engine/run-capture.py --platform linux
 scripts/linux/build.sh --apply --generate
 ```
 
+- **Step 3 through the wrappers.** `run-step3.py` runs `03-helium.py` and stamps one full run on a fresh tree.
+  `run-capture.py` runs `series.py capture-base` before step 4 and records the base it captured. Only a tree and base
+  made that way can be packed into the series base the Engine series workflow checks against
+  (`docs/engine-build.md`, "The series base archive").
 - **Pins.** The tags must match `engine/patches/build/helium-pins.ini`. helium-linux's `helium-chromium` submodule
   may sit a few commits past the shared Helium tag; `03-helium.py` accepts that only when the two commits agree on
   everything the build reads (the patches, version files, lists and utils), which is why the `fetch` line brings in
@@ -557,11 +567,11 @@ any AUR package.
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm --filter @ardia/linux build
+pnpm --filter @ardia/desktop build
 source engine/patches/build/env.sh
 python3 scripts/linux/package.py \
   --out "$CB/chromium_git/chromium/src/out/$GN_OUT_CONFIGS" \
-  --ui apps/linux/dist \
+  --ui apps/desktop/dist/linux \
   --content-blocker "$(scripts/linux/fetch-ubo.sh)" \
   --destination "$CB/artifacts/ardia-linux-$AC_TARGET_CPU.tar.xz"
 ```
@@ -623,7 +633,7 @@ command ([linux-ci.md](linux-ci.md) › Linux releases).
   - `share/polkit-1/actions/dev.ardia.linux.policy`;
   - `share/apparmor.d/ardia`, the AppArmor profile `install.sh` installs on Ubuntu;
   - `install.sh`.
-- **Running it.** Run the extracted `bin/ardia`. A raw build-tree `chrome` needs `--ardia-ui-dir apps/linux/dist`.
+- **Running it.** Run the extracted `bin/ardia`. A raw build-tree `chrome` needs `--ardia-ui-dir apps/desktop/dist/linux`.
   Test with a throwaway `--user-data-dir` and keep the sandbox on.
 - **Installing.** `sudo ./ardia/install.sh` installs under `/usr`. It also accepts `--prefix /opt/ardia` and
   `--destdir <staging root>`.
@@ -675,7 +685,10 @@ command ([linux-ci.md](linux-ci.md) › Linux releases).
   unprivileged user namespaces. `scripts/linux/arch/update-pkgbuild.sh <version> --package <tarball>` (or `--sha256`) sets
   `pkgver` (`0.2.47-nightly.3` becomes `0.2.47nightly.3`, which pacman sorts before `0.2.47`), resets `pkgrel` and writes the matching `.SRCINFO` without makepkg;
   `update-pkgbuild.sh --check` fails when the committed `.SRCINFO` drifts from the PKGBUILD. The committed pair
-  pins the 0.2.47-nightly.2 test build this was verified with; the AUR copy moves with each stable release.
+  pins the 0.2.47-nightly.2 test build this was verified with, on purpose: its sha256 is a real tarball's, and every
+  release writes its own pair with `--out` instead of moving it. The release preflight
+  (`scripts/release/preflight.mjs`) checks the `pkgver` and tarball URL `update-pkgbuild.sh` derives for the version and
+  that the committed `.SRCINFO` matches. The AUR copy moves with each stable release.
   `scripts/linux/arch/publish-aur.sh <version> --sha256 <digest>` clones `ssh://aur@aur.archlinux.org/ardia-bin.git`
   (host keys pinned in `aur_known_hosts`), refuses to go back a version (a nightly counts as older than its stable), checks that the release's tarball has the
   digest, commits and pushes; `--dry-run` clones over HTTPS and pushes nothing. The Release workflow runs it after
@@ -745,12 +758,12 @@ CI builds packages from a prebuilt engine instead of compiling Chromium; see [li
 These checks need no Chromium tree. `scripts/linux/ci-checks.sh` runs all of them:
 
 ```bash
-pnpm --filter @ardia/linux typecheck
-pnpm --filter @ardia/linux test:host
-pnpm --filter @ardia/linux test:symbols
-pnpm --filter @ardia/linux test:graph
-pnpm --filter @ardia/linux acceptance:self-test
-pnpm --filter @ardia/linux build
+pnpm --filter @ardia/desktop typecheck
+pnpm --filter @ardia/desktop test:host
+pnpm --filter @ardia/desktop test:symbols
+pnpm --filter @ardia/desktop test:graph
+pnpm --filter @ardia/desktop acceptance:self-test
+pnpm --filter @ardia/desktop build
 python3 -m unittest discover -s engine/patches/build/tests
 python3 -m unittest discover -s engine/chromium/src/chrome/browser/ardia/tests
 python3 -m unittest discover -s engine/ardiacore-linux/tests
@@ -775,7 +788,7 @@ Against a built package:
 
 ```bash
 node scripts/linux/smoke.mjs --package <ardia-linux-x64.tar.xz> --results <dir>
-pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
+pnpm --filter @ardia/desktop acceptance -- <extracted>/ardia/bin/ardia
 ```
 
 - **Smoke gate.** Twelve checks: libraries resolve; the shell renders the packaged UI; the bootstrap reports
@@ -784,6 +797,52 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
   userscript installed with `ardia scripts install` running on the fixture page ([linux-ci.md](linux-ci.md) › Smoke gate).
 - **Acceptance suite.** Nine headless scenarios for core features; see [linux-acceptance.md](linux-acceptance.md).
 - **Shared changes.** A change to shared code also needs the Mac checks.
+
+### The Rust sync core in the engine build
+
+`packages/core-rs` builds inside the Chromium tree too, with Chromium's own Rust toolchain, so Chromium links a single
+Rust standard library. Nothing in `ac_linux_*` calls it yet.
+
+- **How it gets in.** `engine/ardiacore-linux/copies.tsv` copies `packages/core-rs` into `//ardia/core_rs`, with the same
+  layout. Those files count toward the Linux engine key only, never the Mac's. `packages/core-rs/BUILD.gn` is the
+  target. A Windows engine can copy the same files in and depend on the same target.
+- **What it builds.**
+  - `ardia_crypto` uses its `boringssl` backend over `//third_party/boringssl:bssl_crypto`. That feature is GN-only,
+    since `bssl-crypto` isn't on crates.io.
+  - `ardia_sync_core` and `ardia_core_rust`, the C ABI, use Chromium's vendored `base64`, `serde`, `serde_json` and
+    `zeroize`.
+  - `source_set("ardia_core")` adds `include/ardia_core.h`. C++ depends on that target.
+- **Keeping it in step.** `cargo test -p ardia-ffi --test chromium_build` fails when a crate source is missing from
+  `BUILD.gn`, or when `copies.tsv` and `BUILD.gn` list different files.
+- **Running it.** Run this on a Linux builder with the series applied. The `//ardia/linux:core_rs_tests` group pulls
+  the targets into the graph. The Rust vector tests read fixtures and the other platforms' wordlists at run time, from
+  the checkout that the GN arg `ardia_core_rs_checkout` names. Without that arg they aren't defined. The first build
+  of the targets took 1,083 steps and 57 s on a warm 16-core Boat VM.
+
+  `AC_REPO` must be the absolute path of an Ardia checkout on the builder at the commit being built. On the Boat
+  builder that's `/home/user/ardia`.
+
+  ```bash
+  export AC_REPO=/home/user/ardia
+  echo "ardia_core_rs_checkout = \"$AC_REPO\"" >> out/Release_GN_linux_x64/args.gn
+  autoninja -C out/Release_GN_linux_x64 ardia/core_rs:tests
+  out/Release_GN_linux_x64/ardia_crypto_known_answers
+  out/Release_GN_linux_x64/ardia_sync_vectors
+  out/Release_GN_linux_x64/ardia_sync_vectors_phrase
+  out/Release_GN_linux_x64/ardia_sync_vectors_password_reads
+  out/Release_GN_linux_x64/ardia_core_rs_unittests --ardia-repo="$AC_REPO" --single-process-tests
+  ```
+
+  - `ardia_crypto_known_answers` runs `crates/ardia-crypto/tests/known_answers.rs` against BoringSSL, including
+    the Ed25519 small-order refusals.
+  - `ardia_sync_vectors*` are cargo's `ardia-sync-vectors` tests on the GN build. Their `FixtureCrypto` wraps the
+    build's backend, which is BoringSSL here, and queues the fixture nonces. Every committed byte reproduces through the
+    normal `seal`.
+  - `ardia_core_rs_unittests` is a gtest. It drives C++ through `ardia_core.h` against `sync-vectors`, the Swift and
+    Kotlin sets, `windows-interop`, `sealed-0.2.32.b64`, `phrase-cases.json` and `password-read-cases.json`. The
+    public ABI has no way to choose a nonce, so this test opens the committed fixed-nonce files instead of resealing
+    them. Passwords are deterministic, so it reseals those and compares every byte.
+  - The tests read fixtures from a checkout, so editing a fixture never moves the engine key.
 
 ### Updates and kill switches
 
@@ -853,12 +912,75 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
 
 ### Windows, focus and input
 
-- **Window controls.** Linux uses the Windows build's caption buttons on the right: `…`, minimize, maximize (restore
-  while maximized) and close, drawn by the shared `WindowControls.tsx` in the places Windows puts them (the toolbar
+- **Window controls.** Linux uses the Windows build's caption buttons, by default on the right: `…`, minimize, maximize
+  (restore while maximized) and close, drawn by the shared `WindowControls.tsx` in the places Windows puts them (the toolbar
   row, the end of the top strip, a right sidebar's header, atop a left sidebar with the address bar in it, Little
-  Ardia's bar, Settings and Import). There are no traffic lights. They work on decorationless desktops such as
-  Hyprland; Chrome's own caption buttons are hidden: opacity 0, no input, ignored by accessibility.
-  - `lib/platformChrome.linux.ts` takes the Windows `WINDOW_CHROME`. `platform/windowControls.ts` is swapped for
+  Ardia's bar, Settings and Import). They work on decorationless desktops such as Hyprland; Chrome's own caption
+  buttons are hidden: opacity 0, no input, ignored by accessibility.
+  - **The desktop's layout.** The native buttons follow the desktop's GTK button layout (`gtk-decoration-layout`,
+    read by the engine as `ArdiaShell.windowButtonLayout` and sent again as its `windowButtonLayout` event when it
+    changes): which of minimize, maximize and close show, in what order, on which side, live.
+    `lib/windowButtonLayout.ts` parses it as GTK does (start`:`end, comma-separated, only the first colon splits, no
+    colon puts everything at the start; `icon`, `spacer`, unknown and repeated tokens are dropped). The `…` always
+    stays at the right, at the inner end of the right group, or alone where the Windows build puts its buttons when the
+    right has none: `appmenu` and `menu` are read but don't move it, because upstream GNOME (`appmenu:close`) and
+    Omarchy (`menu:close`) would otherwise hide the menu with the sidebar, and browsers keep it at the toolbar's right. An engine without the call, or a desktop that reports none, keeps
+    `:minimize,maximize,close`, today's buttons. `desktopButtonLayout.ts` feature-detects the call, follows the event
+    and remembers the last layout in `localStorage`, so a new window draws it at once. The layout is part of the
+    native chrome (`nativeButtonsChrome`: `leadingButtons`, `trailingButtons` and widths from their counts, and the
+    Windows title bar band, since the right always holds the `…`), so the right group sits where the Windows build puts its buttons, with
+    room for its own count, and the left group (`LeadingWindowControls.tsx`, swapped in for the shared no-op) sits
+    where the traffic lights would, 13 px before their first light's center (12 px from the edge at the default
+    place), mirrored in a right sidebar, with the Mac's room after it (the sidebar header's tools, the top strip, Little
+    Ardia's bar, Settings' sidebar). It holds only window buttons. Like the lights it slides away with a hidden sidebar
+    and hides in full screen. Known limit: with the sidebar hidden, a desktop whose buttons are all at the left shows
+    none until the sidebar peeks (the `…` stays at the right); giving the toolbar room at its left for them is a
+    follow-up. The same holds for top tabs with auto-hide: the hidden strip parks the lights' place off the window
+    and its peek is a floating strip that places none, so the left buttons don't come back while it peeks. The header's
+    toggle takes the edge slot whenever the left buttons aren't in its row (`headerToggleXIn`): above an address bar
+    sidebar, where both groups sit in the controls row, and while a full-screen page hides them.
+    With the address bar in a left sidebar and both groups, the right group sits at the sidebar's right end of the row
+    atop it (`windowControlsInset`). A change wakes every window-settings hook (`onWindowChromeChange`). Traffic
+    lights and Hidden ignore the layout. The daily settings snapshot carries `window_buttons_side` (right, left, both,
+    none), `window_buttons_count`, `window_buttons_from_desktop` and `window_buttons_tiling_desktop`.
+  - **Tiling desktops.** On a tiling compositor or window manager the native buttons are not drawn and the `…` sits
+    alone at the right, where the layout rule puts it when no buttons are left: those desktops draw no titlebars and
+    close, move and float windows from the keyboard, and Omarchy leaves GTK's layout at GNOME's default. The engine's
+    `desktop` (the browser's `XDG_CURRENT_DESKTOP`) decides, a colon list read without case: Hyprland, sway, niri, i3,
+    river, dwl, bspwm, awesome, qtile, xmonad, dwm, herbstluftwm and Regolith (`Regolith:GNOME`, i3 or sway inside)
+    (`apps/desktop/src/platform/linux/tilingDesktop.ts`). There the effective layout is empty (`desktopButtonLayout` in
+    `state/windows/windowButtons.ts`, from the `tiling` flag `desktopButtonLayout.ts` sets and remembers), whatever
+    GTK reports, and floating windows follow it too, as Hyprland draws no titlebar on them either. The window's
+    `tiled` state can't decide it: Hyprland 0.56 reports every window, half-width and floating ones included, as
+    maximized and tiled on all four edges, and mutter tiles a maximized window on all four. GNOME, KDE, Cinnamon, XFCE
+    and the rest keep the desktop's layout, maximized or not. Traffic lights and Hidden apply as chosen. An unset or
+    unlisted `XDG_CURRENT_DESKTOP` (sway, dwm or xmonad started from a TTY or `startx`, SwayFX) keeps the desktop's
+    layout; Window buttons › Hidden is the way out there, and the snapshot sends the desktop's own side and count with
+    `window_buttons_tiling_desktop: false`. On a listed tiling desktop it sends `window_buttons_side: none`,
+    `window_buttons_count: 0` and `window_buttons_tiling_desktop: true`; watch the share of Linux snapshots with it
+    against those whose `setting_windowButtons` is `hidden`, which should fall as tiling users stop needing the
+    setting.
+  - **Traffic lights.** Settings › Appearance › Window buttons (`windowButtons`: `native` by default, `trafficLights`
+    or `hidden`; kept on this device, in the config file and in the daily settings snapshot) brings back the
+    Mac's lights at the top left instead, with the Mac's layouts: no `…` (the hamburger stays in the header), the
+    sidebar header's tools after the lights, and nothing kept clear at the top right. `lib/platformChrome.desktop.ts`
+    holds both chromes and `applyWindowButtonStyle` swaps the one `WINDOW_CHROME` object in place;
+    `state/windows/windowButtons.ts` applies it after hydrate and on every store change, subscribed before anything
+    renders, so every window, Settings included, switches at once without a relaunch. Shared code reads the chrome
+    when it is used (`useControlsShown`, `profileIndicatorX()`, `HEADER_TOOLS.toggleX`, `layout.trafficLightsWidth`,
+    Little Ardia's bar), and the components that read it subscribe to the setting. `TrafficLights.tsx` draws the
+    lights where shared code places them (`setTrafficLightsCenter` in `shims/web/windowChrome.tsx`) and presses them
+    through the same `captionControls.ts` as the native buttons; right-clicking them opens the window menu. The Mac
+    and Windows offer no choice and hide the row.
+  - **Hidden.** `hidden` draws neither the native buttons nor the traffic lights, on any desktop (#2157). Native
+    already draws no window buttons on the tiling desktops it recognises (Tiling desktops above); Hidden is for the
+    rest, such as a tiler Ardia doesn't recognise or anyone who closes, minimizes and tiles windows from the keyboard,
+    and it also drops the `…`. Its chrome reserves nothing (`HIDDEN_BUTTONS_CHROME`: leading and trailing widths 0, no
+    title bar band), so the sidebar header's tools, the top strip and Little Ardia's back button start at the leading
+    edge and nothing is kept clear at the top right. The menu is the header's hamburger, the same one full screen
+    uses, and the sidebar header never collapses while it is the menu's only home. Dragging empty chrome and
+    double-clicking it work as with the other styles, through the shell's drag regions.
+  - `lib/platformChrome.desktop.ts` starts from the Windows `WINDOW_CHROME`. `platform/windowControls.ts` is swapped for
     `hostWindowControls.ts`: minimize and maximize call `ArdiaShell.minimizeWindow` and `toggleMaximizeWindow`, and
     caption regions are a no-op because the shell's own drag regions move the window. Close goes straight to the
     shell's close coordinator (`captionControls.ts`, swapped in for `WindowControls.tsx`'s close), so a window with
@@ -870,26 +992,133 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
     one, and an activation with neither (assistive technology) to the visible one. Pressing it, or Enter on it, while
     a menu is open closes the menu. The buttons take keyboard focus like any button (`focusable` on the shared
     `ControlButton`), and the `…` counts as a menu surface, so tabbing to it keeps the field Edit › Copy and Paste act
-    on. There are never two menu buttons: the `…` while the window buttons are drawn, the header's hamburger
-    otherwise (window or page full screen). Linux keeps the sidebar header the Windows rule would collapse whenever
-    the hamburger has no other home (`sidebarHeaderLayout.ts`). Some full-screen layouts still have none, as before
-    this change: top tabs with minimalism, or a sidebar whose profile part is hidden.
-  - Restore: the engine sends no `maximized` event, so each window reads `ArdiaShell.windowFrame` at start and once
-    per animation frame of resizing, and marks itself maximized when the frame fills the work area, feeding the shared
-    `useMaximizedWindows` through `captionRegions.ts`'s `noteMaximized` (`windowMaximized.ts`). Settings and Import
-    too. Known limits: a window that fills the work area without being maximized, such as a lone tiled window on a
-    tiling window manager (X11 or Wayland), shows restore. On Wayland `windowFrame` is null and the work area is the
-    whole output, so the shell compares its outer size with that, and with a panel, a bar or gaps a maximized window
-    keeps the maximize glyph. Clicking still toggles correctly; the glyph needs the engine to report maximized state.
+    on. There are never two menu buttons: the `…` while the right group that holds it is drawn, the header's hamburger
+    otherwise (window or page full screen, traffic lights or hidden). Linux keeps the sidebar header the Windows rule
+    would collapse whenever the hamburger has no other home (`sidebarHeaderLayout.ts`). The hamburger lives in the
+    header's profile controls (`ProfileIndicator.tsx`), which the sidebar and the top strip mount even when minimalism
+    or the theme hides the profile, so it stays there too. Little Ardia's bar gets the same hamburger at its trailing
+    end (`HeaderAppMenu`, after the profile button) whenever its `…` isn't drawn. Clicking a traffic light leaves
+    keyboard focus where it was, as the native buttons do, and lights slid off the window with a hidden sidebar are
+    inert, so Tab never lands on them.
+  - Desktop layout and window state: the engine answers two calls, each advertised in the bootstrap's capabilities
+    (`ac_linux_window_state.h`), and sends an `ArdiaShell` event of the same name when a value changes:
+    - `ArdiaShell.windowButtonLayout` → `{ layout, desktop }`: `layout` is GTK's raw `gtk-decoration-layout` string
+      (GNOME fills it from `org.gnome.desktop.wm.preferences button-layout`: Ubuntu `:minimize,maximize,close`, upstream
+      GNOME `appmenu:close`, elementary `close:maximize`), or `null` without GTK's Linux UI; `desktop` is the browser's
+      `XDG_CURRENT_DESKTOP` (`""` when unset). `chromium-linux-window-state.patch` keeps the string GTK parses, and the
+      event follows Chromium's window-button-order observer, to every window. Subscribe to the event first, then call:
+      the engine sends a layout only when it differs from the last one it saw, including changes no shell was open for,
+      so a shell that loads later learns the current value from the call, not from an event.
+    - `ArdiaShell.windowState` `[windowId]` → `{ maximized, tiled, fullScreen }`, the event adding `windowId` and going to
+      that window's shell. Subscribe first, then call, as with the layout. `fullScreen` is the window's own full screen,
+      the same signal as the `fullScreen` window event (`WindowFullScreen()`): a page's full screen (a video) is not it,
+      and while a page is full screen `windowState` keeps `maximized` and `tiled` from the last state settled before
+      the window went full screen, so they don't flip and no event fires; `fullScreen` still reads the window's own
+      full screen, so it is `false` then. A window settles its state when its shell attaches, so
+      that holds for a window that was already maximized. One exception: when the configure that enters page full
+      screen also changes the tiled edges and Chromium defers applying it, one `tiled` change can surface during page
+      full screen; it corrects itself when full screen ends. `maximized` is the platform's current state, so a maximized
+      window reads `maximized: false` while it is minimized, and `true` again once restored. `tiled` means the
+      compositor tiled all four edges (Wayland's xdg_toplevel `tiled_*` states), whatever else is set: a GNOME half
+      tile is not tiled, but mutter also tiles all four edges of a maximized window, and Hyprland 0.56 sends
+      `maximized` and all four edges to every tiled window, half-width ones too, and keeps sending them after the
+      window is floated, so tell a tiling desktop from a maximized window with `desktop`, not with `tiled` alone. X11
+      derives its edges from maximized, so there `tiled` is always false. Full screen wins over maximized. The patch keeps the
+      edges on the browser widget and tells the host when they change, comparing each configure with the edges it last
+      reported, not the ones the window last applied, so a configure the window never applied can't hide the next
+      change. Bounds, show-state and edge changes in the same task coalesce, so one configure usually gives one event;
+      a maximize can still give an intermediate one when its state and edges land in different tasks.
+  - Restore: with an engine that answers `ArdiaShell.windowState` (feature-detected from the bootstrap's
+    capabilities), each window listens for its `windowState` event and then reads it, the latest report winning, and
+    its `maximized` flag feeds the shared `useMaximizedWindows` through `captionRegions.ts`'s `noteMaximized`
+    (`windowMaximized.ts`), Settings and Import too; an event heard before the first read answers wins, and page full
+    screen leaves it as it was. A half tile or a window that merely fills the work area keeps the maximize glyph.
+    Older engines keep the frame guess: the window reads `ArdiaShell.windowFrame` at start and once per animation
+    frame of resizing, and marks itself maximized when the frame fills the work area. Its known limits stay with those
+    engines: a window that fills the work area without being maximized shows restore, and on Wayland, where
+    `windowFrame` is null and the work area is the whole output, a maximized window beside a panel, a bar or gaps
+    keeps the maximize glyph. Clicking toggles correctly either way.
 - **Header drag and double-click.** Dragging the header moves the window (`DispatchHostWindowDragMovement`).
   Double-clicking it runs the desktop's titlebar action.
-- **Outer frame.** The host overlays Chromium's client view and doesn't replace its frame. Without the Wayland
-  decoration protocol, Chromium draws its custom frame.
+- **Outer frame.** The host overlays Chromium's client view, and what happens to Chromium's frame around it depends on
+  who decorates the window, decided per window (`CompositorDecorates`, `ac_linux_window_corners.h`). A window's own
+  xdg-decoration answer wins: server-side means the compositor decorates it, client-side means Ardia does. Only with no
+  answer (X11, or a compositor without the protocol) does `XDG_CURRENT_DESKTOP` decide: a tiling desktop (hyprland,
+  sway, niri, i3, river, dwl, bspwm, awesome, qtile, xmonad, dwm, herbstluftwm, regolith; the window-buttons shell
+  change keeps the same list) decorates, any other doesn't. Chromium asks for client-side decorations for these
+  windows; measured on the test desktops, Hyprland 0.56 answers server-side anyway, and Mutter (GNOME) has no
+  xdg-decoration at all. A compositor answers each toplevel on its own, so `chromium-linux-borderless-frame.patch`
+  keeps the answer on each `XdgToplevel`, the host reads its own window's through
+  `WaylandToplevelExtension::CompositorDecorationMode`, and a change of one window's answer reaches only that window's
+  host (posted, not run inside the Wayland listener). A window the host doesn't own, such as the Task Manager, which
+  asks for server-side, changes nothing. The frame hook answers with the decision the host last followed, so a
+  toplevel Chromium recreates (its answer starts over) keeps its frame until the host follows the new answer.
+  `ArdiaShell.windowDecorations` `[windowId]` answers `{ decoratedBy: "app" | "compositor", answer: "none" | "client" |
+  "server", corners: { upperLeft, upperRight, lowerRight, lowerLeft } }` (the frame's corner radii in DIP), and an
+  `ArdiaShell` event of the same name follows each change of any of them. Every window, Settings and Import too,
+  counts itself once in `usage_counts` when its answer settles (a client or server answer at once, no answer after 5
+  seconds): `linux_windows_app_decorated` or `linux_windows_compositor_decorated` for the decision at that moment, and
+  `linux_decoration_answers_none`, `_client` or `_server`. `decoratedBy` is the decision the frame follows.
+  - Where the app decorates (GNOME, KDE, other floating desktops): Chromium's frame stays, with the shadow, outline
+    and corner shape its theme gives it (GTK's own decoration when the GTK frame is in use, which renders a sample to
+    measure the radius once per frame provider). The host clips its UI to that shape, like `overflow: clip` with the
+    frame's `border-radius`: `RoundWindowCorners` takes `GetWindowRoundedCorners()` from the frame view, which is
+    square when the window is maximized, tiled or full screen, and is square too when an X11 window manager doesn't
+    composite. It applies the corners to the `BrowserView`'s own layer (made when a corner is rounded, with
+    `SetIsFastRoundedCorner` so the compositor clips each quad instead of drawing the window into an offscreen surface;
+    it clips what Chromium still paints under the shell, such as the top container), the shell's native view, the
+    curtain and, for Settings and Import, the background. While a glass panel is open cc gives the `BrowserView` its
+    offscreen surface again for the glass's own rounded layers; the output is the same, only that saving pauses. Each
+    page and DevTools view gets the window's corner where its own corner sits on a window corner; near one (closer than
+    the window's radius R to both edges, inset by dx and dy) it gets a corner concentric with the window's,
+    `max(own, R - min(dx, dy))`, so a page in a thin page frame never pokes out of the window's arc; elsewhere it keeps
+    its own corner (`ClipToWindow`). A tab page's own corners are its card's: `tab.viewport` carries `radii`, the radius
+    of each corner the page shares with the rounded pane around it (`clipRadii`, the shared `TabPane`'s `cardRadius`
+    from `pageFrameOf`, in CSS px, turned into DIP with the shell's zoom), so a page with no page frame (Minimalism,
+    page frame 0) is square, a page under a toolbar is square at the top, and a framed page's bottom corners match the
+    pane's exactly. The engine gives the page and a docked DevTools view each the pane's radius only at the corners
+    their bounds share with the pane, and 0 elsewhere (`CornersSharedWithPane`), so the page's corners against DevTools
+    are square. A viewport without radii (an older shell) keeps 12 DIP; `radii` that isn't four finite, nonnegative
+    corners rejects the viewport, and a corner over 4096 CSS px is clamped. An early tab switch keeps each page's hole
+    radii (`setPage` keeps the getters it knows when called without them) and sends the hidden page's viewport without
+    radii, as the page itself would. A refused visible viewport is counted, once per send
+    (`linux_page_viewports_rejected` in `usage_counts`); read it as zero against non-zero, since any refusal means the
+    shell sent a viewport the engine won't take. The pane paints `theme.card` behind the page, so a page rounder than
+    its pane would show that colour in its corner. A page that fills the window (page full screen, no page frame) never
+    shows rounded corners the window doesn't have. A page edge counts as on the window edge when it's within 1 DIP of
+    it. The corners follow layout, window-state and frame changes. The shell follows the same rule for the holes it cuts
+    over pages (`pageHoles.ts`, `windowCornerRadii`): it rounds the page's rectangle out to whole DIPs through the
+    shell's zoom (`shellZoom` in the bootstrap) against the fractional viewport size (`visualViewport`), as the engine
+    does, and takes the frame's radii from `windowDecorations`. A hole corner on a window corner is square, since the
+    window's own clip rounds it, a near one is concentric, and every other corner keeps the page's own radius, so the
+    shell paints no rounded cover over a page that fills the window.
+  - Where the compositor decorates (Hyprland, …): `g_ardia_linux_borderless_frame` answers true for that window, and the
+    frame view and its layout report no border, input or shadow insets and no corner radius and paint no frame, so the
+    client area is the whole window and the compositor rounds, clips and shadows it. The host lays the frame out again
+    (`RefreshEngineFrame`) when it attaches to a window the compositor decorates, and whenever a window's decision
+    changes. Chromium sizes a window with no saved or copied size from the screen with its frame's margin counted in, so
+    a borderless window whose bounds came from that default gives back the margin its frame would have, once, when its
+    xdg-decoration answer arrives (at once on X11; `KeepDefaultVisibleSize`, `DefaultBoundsWithoutFrame`).
+    `WindowSizerLinux` marks the browsers it gives the default size, and the host takes the mark when it attaches
+    (`ArdiaLinuxTakeDefaultSizedBrowser`). It waits for the answer because the compositor's first configure sets the
+    states the margin depends on: Hyprland calls a floating window tiled, so the margin is the 10 px resize border, not
+    the shadow. The window opens at the same visible size as with Chromium's frame (925 × 1040 on a 1920 × 1080 screen
+    rather than 945 × 1060, which ran under Omarchy's top bar and off the screen). Saved, copied and resized sizes are
+    kept, even one that equals the default. Edge resizing stays on a floating window that can be resized: a thin band
+    along the edges answers as a resize border (`NonClientHitTest`); a tiled window has none, and Import, which can't be
+    resized, keeps its edges for its content. On X11 Chrome maps its startup window before the host starts and sets
+    `_GTK_FRAME_EXTENTS` from the frame insets it had then; the host's `FrameTypeChanged` has X11 rewrite the property
+    (`X11Extension::RefreshDecorationInsets`).
+  - Known limits: sway and niri are expected to honour the client-side request (not measured here), so there Ardia
+    keeps Chromium's frame. `windowCornerRadius` and `drawnWindowCornerRadius` still answer a fixed 19 on Linux
+    (`apps/desktop/src/shellMethods.ts`): the shared page-card geometry reads them synchronously for every window, so the
+    settings snapshot's `window_corner_radius` reports that, not the frame's radius.
 - **Menu button.** Linux has no global menu bar, so a menu button stands in for the Mac one: usually the `…` beside the
-  window buttons, and a hamburger in the header only while they're hidden (Window controls above). It lists Ardia,
+  window buttons, and a hamburger in the header while they're hidden (full screen or the setting) or the traffic lights
+  are chosen (Window controls above). It lists Ardia,
   File, Edit, View, Tabs, Bookmarks, History, Extensions, Window and Help as submenus built from the same menu
   state the Mac menu bar uses (checks, disabled commands, dynamic titles, bookmarks, recently closed entries, profiles
-  and extensions), labelled with the effective Linux shortcuts (`apps/linux/src/appMenu.ts`). Items run through the
+  and extensions), labelled with the effective Linux shortcuts (`apps/desktop/src/appMenu.ts`). Items run through the
   shared command path; Close Window, Minimize and Maximize call the native window operations. App commands Linux runs
   itself (`LINUX_APP_COMMANDS` in `appServices.ts`) are kept from the shared handler so they run once. Mac-only entries
   (Services, Hide, Spelling, Substitutions, Speech, Transformations, the WebKit page engine, JavaScript from Apple
@@ -932,7 +1161,7 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
   - Closing the last browser window closes them too, so Ardia quits instead of living on behind a lone Settings
     window.
 - **Shortcuts.**
-  - Linux owns its shortcut catalog (`apps/linux/src/commandCatalog.ts`, `shortcuts.ts`). The same effective bindings
+  - Linux owns its shortcut catalog (`apps/desktop/src/commandCatalog.ts`, `shortcuts.ts`). The same effective bindings
     fill Settings › Keyboard Shortcuts and drive the native key handler at the window's Aura root, so a focused page
     and the shell dispatch the same commands.
   - Bindings match physical key codes, with a logical fallback, so layouts such as German don't remap Ctrl+Z.
@@ -1014,9 +1243,9 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
   stopped drawing while the sidebar peeked, in every window like `sidebar_peeks`; it should stay near 0 against it.
   It reads the same peek state that mounts the region, which is set in an effect after the commit that places the
   panel, so a hide in a frame between the two goes uncounted.
-- **Header.** The menu button shows here whenever the window buttons are hidden (full screen); otherwise it is the
-  `…` beside them. The profile name beside it follows the Mac's rule
-  (`ProfileIndicator.tsx`): only in an Incognito window or with two or more profiles, cut when at least 52 px of it
+- **Header.** The menu button shows here whenever the window buttons are hidden (full screen or Window buttons ›
+  Hidden) or the traffic lights are chosen; otherwise it is the `…` beside them. The profile name beside it follows
+  the Mac's rule (`ProfileIndicator.tsx`): only in an Incognito window or with two or more profiles, cut when at least 52 px of it
   fit, a person icon below that, and nothing when not even the icon fits (a 190 px sidebar with the Downloads button).
   With the address bar in the sidebar the header holds no profile name, as on the Mac: the toggle at the left, back,
   forward and reload at the right edge, and in full screen the menu button in reload's slot with the three one pitch
@@ -1024,6 +1253,8 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
 - **Materials.** `VisualEffect`, `GlassEffect`, popover bubbles and the window's vibrancy take light or dark from the
   theme scope they render in (`useSurfaceDark`), not the app appearance, so an Incognito window is dark in a light
   app and a toast is light there.
+  A custom profile theme draws in the window as the theme editor's preview does: the theme's grey underlay, its
+  gradient at its layer alpha (Intensity and Pass-through blur), then its grain, with the theme's forced appearance.
 - **Window controls with the sidebar on the right.** They sit in the right sidebar's header, at its outer edge, as on
   Windows.
 - **Fullscreen restore.** A window saved fullscreen comes back fullscreen. On Wayland the saved output's name is kept
@@ -1240,7 +1471,7 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
 - **Scope.** State and mode are app-wide local state. The site list goes to every loaded regular profile, and private
   profiles are refused.
 - **Startup.** Helium's `memory-saving-by-default.patch` applies on Linux, and the app pushes its setting at launch.
-- **Tests.** `engine/ardiacore-linux/tests/test_memory_saver.py` and `apps/linux/src/hostCapabilities.test.mjs`.
+- **Tests.** `engine/ardiacore-linux/tests/test_memory_saver.py` and `apps/desktop/src/hostCapabilities.test.mjs`.
 - **Tab protection.** Unknown protection state counts as protected. `unsavedInput: null` protects a tab.
 - **Loaded tab budget.** The shared budget (`state/tabs/loadedTabBudget.ts`) asks a hidden tab to sleep through its
   WebView handle's `sleepIfHidden(seconds)`, the `sleepIfHidden` tab command (`ac_linux_tab_sleep.cc`). As on the Mac,
@@ -1268,7 +1499,7 @@ Linux reads calendars from Evolution Data Server, which GNOME Online Accounts, G
   - One 90 s deadline per `objects` request.
   - A calendar that times out is skipped for two minutes.
   - Each calendar reports its own status, so one expired account doesn't hide the others.
-- **Adapter.** `apps/linux/src/hostCalendar.ts` and `calendarIcs.ts` parse iCalendar and expand RRULE, RDATE, EXDATE
+- **Adapter.** `apps/desktop/src/platform/linux/hostCalendar.ts` and `calendarIcs.ts` parse iCalendar and expand RRULE, RDATE, EXDATE
   and RECURRENCE-ID in the event's zone. They resolve TZIDs from IANA names, embedded VTIMEZONEs or EDS
   `GetTimezone`. A rule stops at 50,000 periods, and one refresh shares a 750 ms expansion budget. Truncated events are
   reported, not dropped.
@@ -1324,7 +1555,7 @@ Linux reads calendars from Evolution Data Server, which GNOME Online Accounts, G
     `ArdiaTabs`/`unclaimed` events. A new renderer has to ask again, and gets again any tab an earlier renderer was
     told about but never bound. After a shell crash that can add a second sidebar entry for a background tab the
     crashed shell had saved, which is preferred over a tab nobody can see.
-  - `apps/linux/src/unclaimedTabs.ts` opens each one in its own window, selected only if the extension asked for
+  - `apps/desktop/src/unclaimedTabs.ts` opens each one in its own window, selected only if the extension asked for
     `active` and the tab is still Chrome's active tab.
   - A window Chrome makes (`chrome.windows.create`) is marked `chromeMade` in its bootstrap and lists its tabs in
     `adoptTabs`. `initialHostSession` seeds the window with them instead of a blank tab, and the window is saved like
@@ -1348,7 +1579,7 @@ Linux reads calendars from Evolution Data Server, which GNOME Online Accounts, G
 
 - **Native requests.** GitHub, Bitbucket, Notion, Confluence and Google Drive are reached from the browser process
   (`ac_linux_live.cc`, `ac_linux_live_service.cc`), never by renderer `fetch`. The shell keeps `connect-src 'none'`.
-  - The Linux UI swaps the shared `state/live/sources.ts` and `net.ts` for `apps/linux/src/liveSources.ts` and
+  - The Linux UI swaps the shared `state/live/sources.ts` and `net.ts` for `apps/desktop/src/liveSources.ts` and
     `liveNet.ts`. These ask for fixed operations through `ArdiaLive.request`, `connect`, `cancel` and `disconnect`.
   - Native code builds every URL and adds the credential.
   - A GitHub GraphQL query must be read-only.
@@ -1432,7 +1663,29 @@ Linux reads calendars from Evolution Data Server, which GNOME Online Accounts, G
   - A 24-word BIP-39 phrase.
 - **Writes.** Files are staged `O_EXCL|O_NOFOLLOW` at 0600, fsynced, then published with
   `renameat2(RENAME_NOREPLACE)`. Everything below the chosen folder is opened with `openat`.
-- **Folder.** The default is `$HOME/Ardia Sync`, or `--ardia-sync-folder`.
+- **Folder.** Linux has no cloud drive to default to, so Settings › General › Sync › Turn On… asks where the folder goes
+  (`PLATFORM_FEATURES.defaultCloudDrive` is false): the chooser opens in the home folder, and the folder picked gets an
+  `Ardia Sync` folder inside it unless it is already named that or already holds sync data
+  (`state/sync/folderMove.ts` `syncFolderAt`). A picked folder that holds sync data goes to Enter Recovery Phrase
+  instead of starting a second chain. The engine still reports `$HOME/Ardia Sync`, or `--ardia-sync-folder`, as
+  `defaultPath`, which the chooser starts beside and nothing creates. Once a folder is chosen, Turn On uses it.
+- **Moving.** While Sync is on, Settings › General › Sync › Sync Folder › Move… (also Advanced… › Move Sync Folder…) moves it
+  (`PLATFORM_FEATURES.movesSyncFolder`). The sync window holds its cycles, then: a folder inside the current folder or
+  holding it, or one with another phrase's data, is refused; so is a folder that can't be written; a folder that
+  already holds this phrase's chain and every file of the old one is only pointed at; otherwise the files of this
+  chain the new folder lacks are read and written into it through the native calls (into its existing chain, if it has
+  one), the new folder is checked to hold every file of the old one, and only then does sync use it. A read of the new
+  folder that fails is a failed move. The scopes copied are the ones known here plus every profile the old folder's
+  own app scope names (`listedProfileScopes`), so a profile another device added since the last cycle moves too. A
+  failed copy removes the files it wrote and keeps the new chain, empty: deleting a chain is recursive, so it could
+  take a file another device wrote there after any check. A later move into that folder completes the chain instead of
+  pointing at it, since it lacks the old folder's files. The cleanup is best effort: if a removal fails, part of the
+  copy can stay in the new folder, which Sync doesn't use. Files still downloading into the current folder refuse the
+  move whenever that folder can be read, before the new folder is compared, since the move can't tell yet whether the
+  new folder holds them. Turning Sync off or Sync Now during a move waits for the move, then runs. The old folder
+  stays as it was, because other devices may still sync through it. When the old folder is gone, a folder holding this
+  chain with files in it is pointed at and an empty one refused. Pointing at the folder after moving it by hand in a
+  file manager is that re-point, so Sync going offline after such a move is fixed from here too.
 - **Key.** The sync key is a Secret Service item, "Ardia Sync Key" (schema `dev.ardia.linux.SyncKey`). Showing,
   copying or saving the recovery words asks polkit, then allows 60 s.
 - **One authority.** Only one browser renderer syncs: it holds a Web Lock plus a native lease that expires 30 s after
@@ -1507,7 +1760,7 @@ It works as on the Mac ([cli.md](cli.md), [automation.md](automation.md)); what 
     settles `off` ("The control socket was stopped while it started."), never with a stale generation.
 - **Installer** (`ac_linux_cli.cc`, a port of `CliInstaller.swift`). `ArdiaCli.installedVersion` is the basename of the
   `current` link in `${ARDIA_CLI_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/ardia/cli}`. The bootstrap carries it
-  (`nativeModules.ArdiaCli`) so the shared code can read it synchronously, and `apps/linux/src/hostCli.ts` keeps it
+  (`nativeModules.ArdiaCli`) so the shared code can read it synchronously, and `apps/desktop/src/hostCli.ts` keeps it
   current from installs and the `onInstalledVersion` event.
   - `ArdiaCli.install` runs `/bin/sh lib/ardia/cli/ardia-cli-install.sh --version <VERSION> [--sha256 <digest>]` from
     the temp folder with stdin on `/dev/null`. It gets the browser's environment minus every `ARDIA_*` variable, plus
@@ -1520,7 +1773,13 @@ It works as on the Mac ([cli.md](cli.md), [automation.md](automation.md)); what 
     gives `ArdiaCli.install` 330 s (`bootstrap.js`). The result is parsed as on the Mac (`ok`,
     `appVersion`, `binPath`, `version`, `rcFile`, `error`, `lines`, `status`, `installedVersion`), and a version that
     doesn't match `^[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$` is refused.
-  - The launcher is `bin/ardia` and the CLI links `~/.local/bin/ardia`; they don't collide.
+  - The launcher is `bin/ardia` and the CLI links `~/.local/bin/ardia`. Where `~/.local/bin` comes after the
+    launcher's folder on `PATH` (Omarchy appends it), `ardia` finds the launcher, so the launcher hands a first
+    argument that is a command word (ASCII lowercase letters, digits and `-`, not a file in the current folder) to
+    `${ARDIA_CLI_HOME:-$XDG_DATA_HOME/ardia/cli}/current/bin/ardia` when it is installed, with `~/.local/share` for an
+    unset or relative `XDG_DATA_HOME`, as its installer does. It never does as root. URLs, dotted hosts, hosts with a
+    port, files and switches still open in the browser; a bare word like `localhost` reaches the command, as it does
+    when the command comes first on `PATH`.
   - An instance started with its own `--user-data-dir` is a test instance: it installs only with both
     `ARDIA_CLI_HOME` and `ARDIA_CLI_BIN_DIR` set, and reports no installed version without `ARDIA_CLI_HOME`.
 - **Config files** ([config.md](config.md)). `config.json` and `themes/` live in `<user data dir>/config`
@@ -1528,10 +1787,10 @@ It works as on the Mac ([cli.md](cli.md), [automation.md](automation.md)); what 
   `ardia config set|unset|edit` and `ardia theme new|use` reach a running Ardia. `ArdiaConfig.readFile`, `watch` and
   `writeSchemas` are native (`ac_linux_config_core.cc` for the files and the inotify watcher, `ac_linux_config.cc`
   for the threads and the windows), with the Mac's limits; the schemas go to `<user data dir>/config-schema/` and into
-  the config folder when it exists. `apps/linux/src/hostConfig.ts` keeps each window's reads so the shared code can
+  the config folder when it exists. `apps/desktop/src/hostConfig.ts` keeps each window's reads so the shared code can
   read synchronously, and refreshes them on the host's `onFilesChanged` before it raises `onChange`. An engine that
   doesn't advertise the three methods keeps the old answers (no folder, nothing watched).
-- **UI.** `apps/linux` turns the Settings rows on from the host's capabilities (`cliControl` needs the three engine
+- **UI.** `apps/desktop` turns the Settings rows on from the host's capabilities (`cliControl` needs the three engine
   calls and the four `ArdiaAutomation` methods; `cliInstall` needs both `ArdiaCli` methods), so an older engine still
   hides them. `startCliControl` runs in every window, Settings included, so the pill and the Settings note follow the
   server. The shared UI has no onboarding step for the command; it is offered in Settings › Advanced.
@@ -1750,7 +2009,7 @@ Both are ports of the Mac's native code (`ArdiaWebView+Peek.mm`, `ArdiaWebView+T
   (`ac_linux_appearance.h`, `ac_linux_system.cc`). Both native themes recompute and notify, so browser windows,
   their pages, the shell and Incognito pages all get `prefers-color-scheme` from it without a reload. The shell's
   `isDarkAppearance` asks the engine (`ArdiaShell.isDarkAppearance`), and while the engine applies the mode the
-  shell's own `prefers-color-scheme` query is the effective appearance (`apps/linux/src/hostAppearance.ts`).
+  shell's own `prefers-color-scheme` query is the effective appearance (`apps/desktop/src/hostAppearance.ts`).
   A profile whose Chrome `browser.theme.color_scheme2` pref is not System still wins over it for its regular pages.
 - **`ArdiaApp.hardwareInfo`** answers the Mac's `{chip, gpu?, memoryGB, displays, maxScale, hardwareDecode}`
   (`ac_linux_hardware.h`): the chip from `base::SysInfo::CPUModelName`, read off the UI thread; memory from
@@ -2047,7 +2306,7 @@ These were open at the time of the PR.
 - **Field timing.** `platform/fieldTiming.ts` binds the macOS-only `NativeModules.ACFieldTiming`, which is undefined
   on Linux, so `journeys.ts` threw `Cannot read properties of undefined (reading 'lastInput')` from a store update and
   Enter in a new tab's address bar did nothing (Fedora 44, wlroots). Linux replaces the module with
-  `apps/linux/src/fieldTiming.ts`, which reports no timing data (`lastInput` is `[0, 0]`, `drain` is empty), so the
+  `apps/desktop/src/fieldTiming.ts`, which reports no timing data (`lastInput` is `[0, 0]`, `drain` is empty), so the
   field journeys send no samples from Linux. UI only; the engine key is unchanged.
 - **Settings rows without a backend are hidden**, each until the host advertises its capability
   (`unavailableSettingIds` in `hostCapabilities.ts`): Zoom with Ctrl and the mouse wheel

@@ -46,7 +46,7 @@ export function resolvedShortcuts({ settings, profileOrder }: ShortcutState): Re
   return resolvedFor.resolved;
 }
 
-export const shortcutOf = (id: string, s: ShortcutState = useBrowser.getState()): Shortcut | undefined => resolvedShortcuts(s).bindings.get(id)?.[0];
+const shortcutOf = (id: string, s: ShortcutState = useBrowser.getState()): Shortcut | undefined => resolvedShortcuts(s).bindings.get(id)?.[0];
 
 export const commandsHolding = (shortcut: Shortcut, s: ShortcutState = useBrowser.getState()): string[] => resolvedShortcuts(s).holdersOf(shortcut);
 
@@ -133,12 +133,16 @@ function watchShortcuts(_key: string, listener: () => void): () => void {
 
 export const ctrlTabChoice = (s: ShortcutState = useBrowser.getState()): CtrlTabChoice => ctrlTabChoiceOf(resolvedShortcuts(s));
 
-export function chooseCtrlTab(preset: CtrlTabPreset) {
+export function setCtrlTab(preset: CtrlTabPreset): boolean {
   const s = useBrowser.getState();
   const combos = ctrlTabCombos(resolvedShortcuts(s));
-  if (!combos) return;
+  if (!combos) return false;
   s.updateSettings({ shortcuts: ctrlTabOverrides(s.settings.shortcuts, combos, preset, resolvedShortcuts(s).defaultsOf) });
-  noteSettingsPick("ctrlTab", preset);
+  return true;
+}
+
+export function chooseCtrlTab(preset: CtrlTabPreset) {
+  if (setCtrlTab(preset)) noteSettingsPick("ctrlTab", preset);
 }
 
 export function ctrlTabCustomQuery(s: ShortcutState = useBrowser.getState()): string {

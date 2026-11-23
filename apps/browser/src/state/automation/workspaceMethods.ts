@@ -4,13 +4,14 @@ import { activeTabId, isIncognitoProfile } from "../browser/model";
 import { noteCliEdits } from "../telemetry/usage";
 import { consentToken, type ConsentToken } from "../telemetry/client";
 import { failure, type ErrorCode, type MethodError } from "./automationMethods";
-import { eligibleKind, isEligibleTab, ownEntry } from "./automationWindows";
-import { parseOps, type Op } from "./workspaceOps";
+import { eligibleKind, isEligibleTab } from "./automationWindows";
+import { parseOps, type Op, type UrlRule } from "./workspaceOps";
 import { runOp } from "./workspaceApply";
 import { takeLateResults } from "./tabCalls";
 import { OpError, type Changed, type OpResult } from "./workspaceTargets";
 import { groupFields, isEligibleGroup, tabNode, workspace, type GroupNode, type TabNode } from "./workspaceTree";
 import { sampleTabUsage, workspaceWithUsage } from "./workspaceUsage";
+import { ownValue } from "../../lib/decode";
 
 type Body = { result: unknown } | { error: MethodError };
 
@@ -25,7 +26,7 @@ export function workspaceMethod(params: Record<string, unknown>): Body | Promise
   if (params.usage !== undefined && typeof params.usage !== "boolean") return failure("bad_request", "usage is true or false.");
   const s = useBrowser.getState();
   if (window && !eligibleKind(s, window)) return failure("no_window", `There's no window ${window} the ardia command can use.`);
-  if (profile && (!ownEntry(s.profiles, profile) || isIncognitoProfile(profile))) return failure("no_window", `There's no profile ${profile}.`);
+  if (profile && (!ownValue(s.profiles, profile) || isIncognitoProfile(profile))) return failure("no_window", `There's no profile ${profile}.`);
   if (!params.usage) return { result: workspace(s, { window, profile }) };
   return sampleTabUsage().then(
     (usage) => ({ result: workspaceWithUsage(workspace(useBrowser.getState(), { window, profile }), usage) }),
@@ -33,7 +34,7 @@ export function workspaceMethod(params: Record<string, unknown>): Body | Promise
   );
 }
 
-export type ApplyResult = {
+type ApplyResult = {
   ok: boolean;
   applied: number;
   results: (OpResult & { op: string })[];
@@ -89,10 +90,10 @@ async function runAll(ops: Op[], stillOn: () => boolean, consent: ConsentToken |
   };
 }
 
-export function applyMethod(params: Record<string, unknown>, stillOn: () => boolean, connection = 0): Body | Promise<Body> {
+export function applyMethod(params: Record<string, unknown>, stillOn: () => boolean, connection = 0, urlRule?: UrlRule): Body | Promise<Body> {
   const unknown = Object.keys(params).filter((key) => key !== "ops");
   if (unknown.length) return failure("bad_request", `apply takes ops, not ${unknown.join(", ")}.`);
-  const ops = parseOps(params.ops);
+  const ops = parseOps(params.ops, urlRule);
   if (!Array.isArray(ops)) {
     noteCliEdits(0, 0, 1);
     return failure(ops.code, ops.message);

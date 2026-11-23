@@ -5,7 +5,7 @@ import Foundation
 struct PluginFolders {
   static let maxPlugins = 64
   static let manifestName = "plugin.json"
-  static let officialFolderName = "OfficialPlugins"
+  static let officialFolderName = PluginSandbox.officialFolderName
   private static let namePattern = try! NSRegularExpression(pattern: "^[a-z0-9][a-z0-9-]{0,39}$")
 
   static let legacyId = OfficialPin.legacyFolderId
@@ -64,26 +64,21 @@ struct PluginFolders {
     Self.isName(name) ? (pluginsLexical as NSString).appendingPathComponent(name) : nil
   }
 
-  func officialCopy(_ name: String, folderId: String, pin: OfficialPin? = PluginFolders.officialPin()) -> OfficialCopy? {
-    guard let sha = OfficialPin.sha(ofFolderId: folderId), let entry = pin?.entry(name) else { return nil }
-    let store = officialStore()
-    if let active = store.active(name), active.sha == sha { return active }
-    return sha == entry.sha256 ? store.copy(name, sha: sha) : nil
+  func officialCopy(_ name: String, folderId: String, pin: OfficialPin? = PluginFolders.officialPin(), fresh: Bool = false) -> OfficialCopy? {
+    OfficialTrust.copy(officialStore(), name: name, folderId: folderId, pin: pin, fresh: fresh)
   }
 
   func legacyFolder(_ name: String, pin: OfficialPin? = PluginFolders.officialPin()) -> String? {
-    guard pin?.entry(name) != nil, officialStore().active(name) == nil, case .success(let places) = programPlaces() else { return nil }
-    return PluginPrograms.legacyCopy(plugin: name, places: places)
+    guard let entry = pin?.entry(name), OfficialTrust.trustedActive(officialStore(), entry) == nil, case .success(let places) = programPlaces(),
+      let folder = PluginPrograms.legacyCopy(plugin: name, places: places), OfficialTrust.bundledCopyHolds(folder, digests: entry.bundledDigests)
+    else { return nil }
+    return folder
   }
 
   private func source(_ name: String, folderId: String) -> (path: String, identity: String?)? {
     if folderId == Self.legacyId { return legacyFolder(name).map { ($0, Self.legacyId) } }
     if OfficialPin.sha(ofFolderId: folderId) != nil { return officialCopy(name, folderId: folderId).map { ($0.path, folderId) } }
     return lexicalFolder(name).map { ($0, nil) }
-  }
-
-  func isOfficial(_ name: String, folderId: String) -> Bool {
-    folderId == Self.legacyId ? legacyFolder(name) != nil : officialCopy(name, folderId: folderId) != nil
   }
 
   func approvedFolder(_ name: String, folderId: String, approved: String) -> Result<OpenedFolder, FolderRefusal> {
@@ -120,7 +115,7 @@ struct PluginFolders {
   func officialEntry(_ entry: OfficialPinEntry) -> [String: Any]? {
     let store = officialStore()
     store.sweep(entry.name, keeping: [entry.sha256])
-    let active = store.active(entry.name)
+    let active = OfficialTrust.trustedActive(store, entry)
     var result: [String: Any]?
     if let active {
       let read = Self.manifestText(active.path)

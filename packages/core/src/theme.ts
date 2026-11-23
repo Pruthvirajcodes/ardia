@@ -220,15 +220,23 @@ export function themePalette(theme: ThemeLook): string[] {
   return theme.stops.map((s) => colorHex(s.color));
 }
 
-function underGrey(theme: ThemeLook, dark: boolean): number {
-  const u = themeUnderlayAlpha(theme, dark);
+function backdropUnderGrey(underlayAlpha: number, dark: boolean): number {
+  const u = clamp01(underlayAlpha);
   const blur = dark ? 0.16 : 0.92;
   return (dark ? 0 : 1) * u + blur * (1 - u);
 }
 
-export function themeUnderColor(theme: ThemeLook, dark: boolean): string {
-  const grey = underGrey(theme, dark);
+function underGrey(theme: ThemeLook, dark: boolean): number {
+  return backdropUnderGrey(themeUnderlayAlpha(theme, dark), dark);
+}
+
+export function backdropUnderColor(underlayAlpha: number, dark: boolean): string {
+  const grey = backdropUnderGrey(underlayAlpha, dark);
   return unitHex([grey, grey, grey]);
+}
+
+export function themeUnderColor(theme: ThemeLook, dark: boolean): string {
+  return backdropUnderColor(themeUnderlayAlpha(theme, dark), dark);
 }
 
 function composite(theme: ThemeLook, dark: boolean, x: number, y: number): number[] {

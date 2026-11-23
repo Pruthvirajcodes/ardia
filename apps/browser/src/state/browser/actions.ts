@@ -35,6 +35,7 @@ import { noteTabClosedByUser } from "../sync/openTabCloses";
 import type { Drop } from "../drag/drops";
 import { movesAcrossProfiles } from "../windows/profileMoves";
 import { noteSidebarDrop } from "../telemetry/tabPresses";
+import { userClose, type ByUser } from "../tabs/closeActivation";
 
 const store = () => useBrowser.getState();
 
@@ -52,11 +53,14 @@ export function switchToTab(tabId: string) {
   if (tab.windowId !== focusedWindowOf(store())) focus(tab.windowId);
 }
 
-export const writesFor = (mayWrite?: () => boolean) => (mayWrite ? (write: () => void) => write() : foreignWriteHooks.around);
+const writesFor = (mayWrite?: () => boolean) => (mayWrite ? (write: () => void) => write() : foreignWriteHooks.around);
 
-export async function closeTab(tabId: string, mayWrite?: () => boolean) {
+type CloseRequest = { mayWrite?: () => boolean; user?: ByUser };
+
+export async function closeTab(tabId: string, { mayWrite, user }: CloseRequest = {}) {
   const commit = writesFor(mayWrite);
-  const consent = consentToken();
+  const consent = user ? user.consent : consentToken();
+  const close = user ? userClose([tabId], user) : {};
   const s = store();
   const tab = s.tabs[tabId];
   const w = tab && s.windows[tab.windowId];
@@ -79,17 +83,18 @@ export async function closeTab(tabId: string, mayWrite?: () => boolean) {
   }
   if (splitOf(now, tabId) && closeKind(now, tabId) === "close") noteSplit("splitPaneCloses", consent);
   const front = activeTabId(now, w.id);
-  commit(() => store().closeTab(tabId));
+  commit(() => store().closeTab(tabId, close));
   const next = activeTabId(store(), w.id);
   if (front === tabId && next && next !== front && isSleeping(next)) noteCloseWokeSleepingTab(consent);
 }
 
-export async function closeGroup(groupId: string, mayWrite?: () => boolean) {
+export async function closeGroup(groupId: string, { mayWrite, user }: CloseRequest = {}) {
   const commit = writesFor(mayWrite);
   const s = store();
   const group = s.groups[groupId];
   const w = group && s.windows[group.windowId];
   if (!group || !w) return;
+  const close = user ? userClose(group.tabIds, user) : {};
   if (!(await groupCloseAllowed(w.id, groupId)) || (mayWrite && !mayWrite())) return;
   if (s.settings.warnBeforeClosingTabGroup && !rootOf(s.groups, groupId)?.pinned) {
     const tabs = plural(group.tabIds.length, "tab");
@@ -105,7 +110,7 @@ export async function closeGroup(groupId: string, mayWrite?: () => boolean) {
     if (!confirmed) return;
     applyHeldReports();
   }
-  if (store().groups[groupId]) commit(() => store().closeGroup(groupId));
+  if (store().groups[groupId]) commit(() => store().closeGroup(groupId, close));
 }
 
 export function toggleMute(tabId: string) {
@@ -278,8 +283,8 @@ export async function openProfileMenu(windowId: string) {
       return [switchItem, { value: { open: "window" as const, profileId: id }, title: `${profile.name} ↗`, alternate: true, swatch, ...alternate }];
     }),
     { separator: true },
-    { id: "new", title: "New Profile", symbol: "plus" },
-    { id: "edit", title: "Edit Profiles…", symbol: "pencil" },
+    { id: "new", title: "New Profile…", symbol: "plus" },
+    { id: "edit", title: "Manage Profiles…", symbol: "gearshape" },
   ];
   const choice = await chooseFromMenu(items);
   if (!choice) return;
