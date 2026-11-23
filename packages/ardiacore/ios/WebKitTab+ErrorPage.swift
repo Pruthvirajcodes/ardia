@@ -189,7 +189,7 @@ extension WebKitTab {
 
   func paintBackdrop() {
     wantsLayer = true
-    if safety.backdrop.uncovers(layer?.backgroundColor, visible: visible) {
+    if window != nil, safety.backdrop.uncovers(layer?.backgroundColor, visible: visible) {
       ArdiaEvents.emit("webKit.counted", data: ArdiaConsentStamp.begin().onto(["name": "backdropHidden"]))
     }
     layer?.backgroundColor = safety.backdrop.layerColor(visible: visible)
