@@ -64,6 +64,11 @@ function start() {
     pages: pagesKeptFor(scope, () => adapters()[0].extract(() => undefined, () => false, 0, () => false, () => undefined)),
     open: (name) => S().newTab(windowId, { url: page(name), background: true }),
     published: (key) => scope.records[`otab:t:${key}`]?.v?.u ?? null,
+    compactAway(key) {
+      const records = Object.fromEntries(Object.entries(scope.records).filter(([k]) => k !== `otab:t:${key}`));
+      const snapshot = { v: 1, kind: "snapshot", device: "devB", at: Date.now(), vv: { ...scope.vv }, seen: {}, records };
+      files.set("snapshot", JSON.stringify(snapshot));
+    },
     edit(change) {
       const before = S();
       change();
@@ -212,6 +217,75 @@ test("a closed tab that comes back as a pin sends the page it went to while pinn
   assert.deepEqual([...d.pages], [[d.kept, page("keep")]]);
 });
 
+test("a pin sync moved while asleep keeps the newer record of another computer once unpinned without navigating", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  d.edit(() => S().pinTabs([id], true));
+  S().updateTab(id, { page: { kind: "asleep" } });
+  await d.sync();
+  S().updateTab(id, { url: page("news"), page: { kind: "asleep" } });
+  d.receive(id, { u: page("shared"), t: "", pos: "V", g: null, a: 0 });
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+  d.edit(() => S().pinTabs([id], false));
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+});
+
+test("a pin that sleeps after a local navigation still sends that page once unpinned", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  d.edit(() => S().pinTabs([id], true));
+  await d.sync();
+  S().updateTab(id, { url: page("inbox") });
+  await d.sync();
+  S().updateTab(id, { page: { kind: "asleep" } });
+  d.receive(id, { u: page("shared"), t: "", pos: "V", g: null, a: 0 });
+  await d.sync();
+  d.edit(() => S().pinTabs([id], false));
+  await d.sync();
+  assert.equal(d.published(id), page("inbox"));
+});
+
+test("a closed tab that comes back as a sleeping pin sends a page it went to after the first sync once unpinned", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  d.edit(() => S().closeTab(id));
+  await d.sync();
+  const pin = S().newTab(d.windowId, { url: page("mail"), background: true });
+  S().pinTabs([pin], true);
+  S().updateTab(pin, { pinKey: id, page: { kind: "asleep" } });
+  await d.sync();
+  d.receive(id, { u: page("shared"), t: "", pos: "V", g: null, a: 0 });
+  await d.sync();
+  S().updateTab(pin, { url: page("inbox"), page: { kind: "loaded", nav: { url: page("inbox"), seq: 1 } } });
+  d.edit(() => S().pinTabs([pin], false));
+  await d.sync();
+  assert.equal(d.published(id), page("inbox"));
+  d.edit(() => S().closeTab(pin));
+  await d.sync();
+  assert.deepEqual([...d.pages], [[d.kept, page("keep")]]);
+});
+
+test("a closed tab that comes back as a pin and navigates before the first sync never overwrites the newer record", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  d.edit(() => S().closeTab(id));
+  await d.sync();
+  const pin = S().newTab(d.windowId, { url: page("mail"), background: true });
+  S().pinTabs([pin], true);
+  S().updateTab(pin, { pinKey: id, url: page("inbox"), page: { kind: "loaded", nav: { url: page("inbox"), seq: 1 } } });
+  d.receive(id, { u: page("shared"), t: "", pos: "V", g: null, a: 0 });
+  await d.sync();
+  d.edit(() => S().pinTabs([pin], false));
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+});
+
 test("a key that still has a published page keeps its last page through a failed round", async () => {
   const d = start();
   const other = S().createProfile({ name: "Other" });
@@ -294,6 +368,20 @@ test("a tab another computer closes while the profile has no window leaves no pa
   assert.equal(Object.values(S().tabs).some((t) => t.url === page("mail")), false);
   assert.equal(d.published(d.kept), page("keep"));
   assert.equal(Object.values(S().tabs).some((t) => t.url === page("keep")), true);
+});
+
+test("a close another computer compacted away while the profile has no window leaves no page behind", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  d.edit(() => S().closeWindow(d.windowId));
+  await d.sync();
+  assert.deepEqual([...d.pages.keys()].sort(), [d.kept, id].sort());
+  d.compactAway(id);
+  await d.sync();
+  await d.sync();
+  assert.equal(d.published(id), null);
+  assert.deepEqual([...d.pages.keys()], [d.kept]);
 });
 
 test("a close whose write failed while the profile has no window leaves no page behind after the retry", async () => {

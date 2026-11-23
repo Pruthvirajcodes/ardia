@@ -6,12 +6,14 @@ import { noteOpenTabsPublished, noteOpenTabsWoke } from "../telemetry/openTabSyn
 import { holdsOpenTabs, localOpenTabs, regularChain } from "./openTabsLocal";
 import { OPEN_GROUP, OPEN_TAB, OPEN_TABS, OPEN_TABS_ON, openGroupValue, openTabValue, openTabsOn, type OpenGroupValue, type OpenTabValue } from "./openTabRecords";
 import { applyOpenTabs } from "./openTabsApply";
+import { hasPage } from "../tabs/pageSession";
 
 export type OpenTabsMode = "on" | "off" | "retire";
 export type OpenTabCloses = { keys: () => readonly string[]; settle: (keys: string[]) => void };
 
 const store = () => useBrowser.getState();
 const pagesSeen = new WeakMap<ScopeState, Map<string, string>>();
+const pinPagesSeen = new WeakMap<Map<string, string>, Map<string, string>>();
 
 const MINUTE = 60_000;
 const toMinute = (ms: number) => Math.floor(ms / MINUTE) * MINUTE;
@@ -32,16 +34,21 @@ function keysInUse(s: BrowserState) {
 function forgetClosedPages(state: ScopeState, baseTab: (key: string) => OpenTabValue | null) {
   const seen = pagesSeenIn(state);
   let inUse: Set<string> | null = null;
-  const gone = (key: string) => !baseTab(key) || state.records[`${OPEN_TAB}${key}`]?.v === null;
+  const gone = (key: string) => !baseTab(key) || openTabValue(state.records[`${OPEN_TAB}${key}`]?.v) === null;
   for (const key of seen.keys()) if (gone(key) && !(inUse ??= keysInUse(store())).has(key)) seen.delete(key);
 }
 
-function notePinStartPages(s: BrowserState, profileId: string, pinned: Set<string>, seen: Map<string, string>) {
+function notePinPages(s: BrowserState, profileId: string, pinned: Set<string>, seen: Map<string, string>) {
+  const before = pinPagesSeen.get(seen);
+  const now = new Map<string, string>();
   for (const t of Object.values(s.tabs)) {
-    if (t.profileId !== profileId) continue;
     const key = pinKeyOf(t);
-    if (pinned.has(key) && !seen.has(key)) seen.set(key, t.url);
+    if (t.profileId !== profileId || !pinned.has(key) || now.has(key)) continue;
+    now.set(key, t.url);
+    const movedBySync = !hasPage(t) && before?.get(key) !== t.url;
+    if (movedBySync || !seen.has(key)) seen.set(key, t.url);
   }
+  pinPagesSeen.set(seen, now);
 }
 
 function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCloses, base: (key: string) => unknown, remote: (key: string) => unknown): Extraction {
@@ -56,7 +63,7 @@ function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCl
     return tab;
   };
   forgetClosedPages(state, baseTab);
-  notePinStartPages(s, profileId, pinned, seen);
+  notePinPages(s, profileId, pinned, seen);
   const positions = new Map<string, string>();
   for (const w of new Set(synced.map(({ tab }) => tab.windowId))) {
     const here = synced.filter(({ tab }) => tab.windowId === w);
