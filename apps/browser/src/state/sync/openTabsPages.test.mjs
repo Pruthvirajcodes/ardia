@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("../browser/store.ts");
 const { Clock, emptyScope, syncScope } = await import("@ardia/sync");
-const { openTabsAdapters } = await import("./openTabs.ts");
+const { openTabsAdapters, openTabsPinPageWrites } = await import("./openTabs.ts");
 const { noteTabClosedByUser, openTabsClosed, recordOpenTabCloses } = await import("./openTabCloses.ts");
 const { holdsOpenTabs } = await import("./openTabsLocal.ts");
 const { openTabCloses } = await import("./scopeAdapters.ts");
@@ -14,23 +14,23 @@ const P = "default";
 const SCOPE = profileScope("pages");
 const page = (name) => `https://${name}.example/`;
 
-function pagesKeptFor(state, run) {
-  const { set } = WeakMap.prototype;
-  let pages;
-  try {
-    WeakMap.prototype.set = function (key, value) {
-      if (key === state && value instanceof Map) pages = value;
-      return set.call(this, key, value);
-    };
-    run();
-  } finally {
-    WeakMap.prototype.set = set;
+const memory = new Map();
+const watched = new WeakSet();
+const { set: weakSet, delete: weakDelete } = WeakMap.prototype;
+const fromOpenTabs = () => /openTabs\.ts/.test(new Error().stack ?? "");
+WeakMap.prototype.set = function (key, value) {
+  if (watched.has(key) && value instanceof Map && fromOpenTabs()) {
+    memory.set(key, value);
+    watched.add(value);
   }
-  assert.ok(pages, "the scope's page memory was found");
-  return pages;
-}
+  return weakSet.call(this, key, value);
+};
+WeakMap.prototype.delete = function (key) {
+  if (watched.has(key) && fromOpenTabs()) memory.delete(key);
+  return weakDelete.call(this, key);
+};
 
-function start() {
+function start({ mode = "on" } = {}) {
   S().hydrate({});
   S().updateProfile(P, { syncTabs: true });
   const windowId = S().createWindow({ url: page("keep") });
@@ -56,7 +56,9 @@ function start() {
     },
     remove: async (_scope, ids) => ids.forEach((id) => files.delete(id)),
   };
-  const adapters = () => [...pinnedAreaAdapters(P), ...openTabsAdapters(P, scope, "on", closes, () => undefined)];
+  watched.add(scope);
+  const flag = () => undefined;
+  const adapters = () => [...pinnedAreaAdapters(P, openTabsPinPageWrites(P, scope, mode, flag)), ...openTabsAdapters(P, scope, mode, closes, flag)];
   let received = 0;
   const receiveOps = (ops) => {
     received++;
@@ -68,7 +70,17 @@ function start() {
     kept,
     closes,
     failing,
-    pages: pagesKeptFor(scope, () => adapters().find((a) => a.prefix === "otab:").extract(() => undefined, () => false, 0, () => false, () => undefined)),
+    get pages() {
+      return memory.get(scope) ?? new Map();
+    },
+    get pinPages() {
+      return memory.get(memory.get(scope)) ?? new Map();
+    },
+    relaunch: () => memory.get(scope)?.clear(),
+    setMode(next) {
+      mode = next;
+    },
+    receiveOn: (on) => receiveOps([["otab:on", { on }]]),
     open: (name) => S().newTab(windowId, { url: page(name), background: true }),
     published: (key) => scope.records[`otab:t:${key}`]?.v?.u ?? null,
     compactAway(key) {
@@ -83,7 +95,7 @@ function start() {
     },
     sync: () => syncScope({ scope: SCOPE, state: scope, transport, adapters: adapters(), clock, device: "devA" }),
     receive: (key, value) => receiveOps([[`otab:t:${key}`, value]]),
-    receivePin: (key, url) => receiveOps([[`pin:t:${key}`, { g: null, u: url, t: null, i: null, ti: "", pos: "V" }]]),
+    receivePin: (key, url) => receiveOps([[`pin:t:${key}`, url === null ? null : { g: null, u: url, t: null, i: null, ti: "", pos: "V" }]]),
   };
 }
 
@@ -372,6 +384,128 @@ test("a pin that navigates and falls asleep before the next sync sends that page
   d.edit(() => S().pinTabs([id], false));
   await d.sync();
   assert.equal(d.published(id), page("inbox"));
+});
+
+const pinPageCount = (d) => [...d.pinPages.values()].reduce((n, urls) => n + urls.size, 0);
+
+test("a loaded pin that navigates here to the page a pin record named still sends it once unpinned", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  d.edit(() => S().pinTabs([id], true));
+  S().updateTab(id, loadedAt(page("mail")));
+  await d.sync();
+  d.receivePin(id, page("news"));
+  d.receive(id, shared);
+  await d.sync();
+  assert.deepEqual([S().tabs[id].url, S().tabs[id].page.kind], [page("mail"), "loaded"]);
+  S().updateTab(id, loadedAt(page("news")));
+  d.edit(() => S().pinTabs([id], false));
+  await d.sync();
+  assert.equal(d.published(id), page("news"));
+});
+
+test("a loaded pin already on the page a later pin record names still sends it once unpinned", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  d.edit(() => S().pinTabs([id], true));
+  S().updateTab(id, loadedAt(page("mail")));
+  await d.sync();
+  S().updateTab(id, loadedAt(page("news")));
+  d.receivePin(id, page("news"));
+  d.receive(id, shared);
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+  d.edit(() => S().pinTabs([id], false));
+  await d.sync();
+  assert.equal(d.published(id), page("news"));
+});
+
+test("after a relaunch, an untouched loaded pin a pin record names keeps the newer record once unpinned", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await d.sync();
+  d.edit(() => S().pinTabs([id], true));
+  S().updateTab(id, loadedAt(page("mail")));
+  await d.sync();
+  d.relaunch();
+  d.receivePin(id, page("news"));
+  d.receive(id, shared);
+  await d.sync();
+  assert.equal(S().tabs[id].url, page("mail"));
+  d.edit(() => S().pinTabs([id], false));
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+});
+
+test("a sleeping pin sync moved and then parked keeps the newer record once its window is back and it is unpinned", async () => {
+  const d = start();
+  const id = d.open("mail");
+  await pinnedThenMovedBySync(d, id);
+  d.edit(() => S().closeWindow(d.windowId));
+  assert.deepEqual(S().parkedPins[P].tabs.map((p) => [p.id, p.url]), [[id, page("news")]]);
+  await d.sync();
+  await d.sync();
+  const windowId = S().createWindow({});
+  assert.equal(S().tabs[id].url, page("news"));
+  d.edit(() => S().pinTabs([id], false));
+  await d.sync();
+  assert.equal(d.published(id), page("shared"));
+  d.edit(() => {
+    noteTabClosedByUser(id);
+    S().closeTab(id);
+  });
+  await d.sync();
+  assert.equal(d.published(id), null);
+  assert.equal(d.pages.has(id), false);
+  assert.equal(pinPageCount(d), 0);
+  assert.ok(windowId);
+});
+
+test("pins another computer creates and deletes while Open Tabs is switched off elsewhere leave nothing behind", async () => {
+  const d = start();
+  await d.sync();
+  d.receiveOn(false);
+  await d.sync();
+  const keys = Array.from({ length: 10 }, (_, i) => `remote-pin-${i}`);
+  for (const key of keys) {
+    d.receivePin(key, page(key));
+    await d.sync();
+    assert.equal(S().tabs[key]?.url, page(key));
+    d.receivePin(key, null);
+    await d.sync();
+    assert.equal(S().tabs[key], undefined);
+  }
+  assert.deepEqual(keys.filter((key) => d.pages.has(key)), []);
+  assert.equal(pinPageCount(d), 0);
+});
+
+test("pins another computer creates and deletes while Open Tabs is on leave nothing behind", async () => {
+  const d = start();
+  await d.sync();
+  const keys = Array.from({ length: 10 }, (_, i) => `remote-pin-${i}`);
+  for (const key of keys) {
+    d.receivePin(key, page(key));
+    await d.sync();
+    assert.equal(d.pages.get(key), page(key));
+    d.receivePin(key, null);
+    await d.sync();
+  }
+  assert.deepEqual(keys.filter((key) => d.pages.has(key)), []);
+  assert.equal(pinPageCount(d), 0);
+});
+
+test("a pin page written while Open Tabs is off for the profile is never kept", async () => {
+  const d = start();
+  await d.sync();
+  d.setMode("off");
+  await d.sync();
+  d.receivePin("remote-pin", page("remote"));
+  await d.sync();
+  assert.equal(S().tabs["remote-pin"]?.url, page("remote"));
+  assert.equal(d.pages.size, 0);
+  assert.equal(pinPageCount(d), 0);
 });
 
 test("a key that still has a published page keeps its last page through a failed round", async () => {

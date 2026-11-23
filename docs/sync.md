@@ -363,14 +363,17 @@ It covers profiles that share another's data (tabs are each profile's own).
   session restored publishes nothing (tab ids survive a relaunch; tested).
 - **Pins.** A tab pinned on one Mac deletes its `otab:t:` record and goes out as `pin:t:` under the same key; the pin
   adapter, which runs first, pins the other Mac's regular tab, so it isn't doubled. Unpinning gives it back. A pin's
-  page counts as looked at when the pin adapter writes it (a pin another Mac brings back, or a `pin:t:` record moving
-  a copy that isn't loaded); `pinnedApply.ts` hands those pages to the open-tabs extractor (`pinPagesFromSync.ts`).
-  On unpin, a copy whose page is the one looked at, or one the pin adapter wrote that a copy still shows, keeps the
-  other Mac's newer record; any other page is a navigation made here and is sent. Copies mirrored into other windows,
-  frozen copies following the loaded one, and a pin that falls asleep after navigating all follow from that, with no
-  guess from whether a copy is loaded. A pin this Mac hasn't seen as an open tab or had written by the pin adapter since
-  launch has no page looked at, so it keeps the newer record unless the record is gone. The remembered page of a key goes once no tab or
-  parked pin has it and its record is deleted or compacted away, also while the profile has no window (tested).
+  page counts as looked at when the pin adapter writes it: `applyPinned` compares the profile's tabs and parked pins
+  before and after it applies, and hands every page it set (a pin another Mac brings back, a sleeping copy a `pin:t:`
+  record moved, and the copies the mirror moves with it) to `openTabsPinPageWrites`, which keeps them in the open-tabs
+  memory of that scope (weakly keyed by the scope, so a deleted scope takes them along). A loaded pin whose page the
+  record left alone gets nothing. Pages are taken only while the profile syncs all open tabs and no newer `otab:on`
+  says it went off, and every hand-over and extraction drops pages for keys no tab or parked pin holds and pages no copy
+  or parked pin still shows. On unpin, a copy whose page is the one looked at, or one the pin adapter set, keeps the
+  other Mac's newer record; any other page is a navigation made here and is sent. A pin this Mac hasn't seen as an open
+  tab or had a page set on by the pin adapter since launch has no page looked at, so it keeps the newer record unless
+  the record is gone. The remembered page of a key goes once no tab or parked pin has it and its record is
+  deleted or compacted away, also while the profile has no window (tested).
 - **Turning it off.** The Mac where the switch went off tombstones every `otab:` record of the profile and writes
   `otab:on` `{ on: false }` in the same batch (and keeps tombstoning stragglers while it stays off, `tabsRetire` on the
   profile's link; it stops as soon as a newer `otab:on` `{ on: true }` shows the switch went back on elsewhere, even

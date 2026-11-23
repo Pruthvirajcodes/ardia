@@ -6,7 +6,7 @@ import { noteOpenTabsPublished, noteOpenTabsWoke } from "../telemetry/openTabSyn
 import { holdsOpenTabs, localOpenTabs, regularChain } from "./openTabsLocal";
 import { OPEN_GROUP, OPEN_TAB, OPEN_TABS, OPEN_TABS_ON, openGroupValue, openTabValue, openTabsOn, type OpenGroupValue, type OpenTabValue } from "./openTabRecords";
 import { applyOpenTabs } from "./openTabsApply";
-import { takePinPagesFromSync } from "./pinPagesFromSync";
+import type { PinPageWrites } from "./pinnedApply";
 
 export type OpenTabsMode = "on" | "off" | "retire";
 export type OpenTabCloses = { keys: () => readonly string[]; settle: (keys: string[]) => void };
@@ -49,32 +49,50 @@ function forgetClosedPages(state: ScopeState, baseTab: (key: string) => OpenTabV
   }
 }
 
-function notePinPagesFromSync(s: BrowserState, profileId: string, seen: Map<string, string>) {
-  const fromSync = pinPagesFromSyncIn(seen);
-  for (const [key, url] of takePinPagesFromSync(profileId)) {
-    const baseline = seen.get(key);
-    if (baseline === undefined) seen.set(key, url);
-    else if (baseline !== url) {
-      let pages = fromSync.get(key);
-      if (!pages) fromSync.set(key, (pages = new Set()));
-      pages.add(url);
-    }
-  }
+function forgetPinPagesNoCopyShows(s: BrowserState, profileId: string, fromSync: Map<string, Set<string>>) {
   if (!fromSync.size) return;
-  const onCopies = new Map<string, Set<string>>();
-  for (const t of Object.values(s.tabs)) {
-    if (t.profileId !== profileId) continue;
-    const key = pinKeyOf(t);
-    if (!fromSync.has(key)) continue;
-    let urls = onCopies.get(key);
-    if (!urls) onCopies.set(key, (urls = new Set()));
-    urls.add(t.url);
-  }
+  const shown = new Map<string, Set<string>>();
+  const show = (key: string, url: string) => {
+    if (!fromSync.has(key)) return;
+    const urls = shown.get(key);
+    if (urls) urls.add(url);
+    else shown.set(key, new Set([url]));
+  };
+  for (const t of Object.values(s.tabs)) if (t.profileId === profileId) show(pinKeyOf(t), t.url);
+  for (const p of s.parkedPins[profileId]?.tabs ?? []) show(p.id, p.url);
   for (const [key, pages] of fromSync) {
-    const urls = onCopies.get(key);
+    const urls = shown.get(key);
     for (const url of pages) if (!urls?.has(url)) pages.delete(url);
     if (!pages.size) fromSync.delete(key);
   }
+}
+
+const baseIn = (state: ScopeState) => (key: string) => {
+  const json = state.base[`${OPEN_TAB}${key}`];
+  return json === undefined ? null : openTabValue(JSON.parse(json));
+};
+
+export function openTabsPinPageWrites(profileId: string, state: ScopeState, mode: OpenTabsMode, flag: () => HLC | undefined): PinPageWrites | undefined {
+  if (mode !== "on") return undefined;
+  return (written) => {
+    const seen = pagesSeenIn(state);
+    const fromSync = pinPagesFromSyncIn(seen);
+    if (!switchedLater(state, false, flag())) {
+      for (const [key, urls] of written) {
+        for (const url of urls) {
+          const baseline = seen.get(key);
+          if (baseline === undefined) seen.set(key, url);
+          else if (baseline !== url) {
+            const pages = fromSync.get(key);
+            if (pages) pages.add(url);
+            else fromSync.set(key, new Set([url]));
+          }
+        }
+      }
+    }
+    forgetClosedPages(state, baseIn(state));
+    forgetPinPagesNoCopyShows(store(), profileId, fromSync);
+  };
 }
 
 function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCloses, base: (key: string) => unknown, remote: (key: string) => unknown): Extraction {
@@ -89,8 +107,8 @@ function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCl
     return tab;
   };
   forgetClosedPages(state, baseTab);
-  notePinPagesFromSync(s, profileId, seen);
   const fromSync = pinPagesFromSyncIn(seen);
+  forgetPinPagesNoCopyShows(s, profileId, fromSync);
   const positions = new Map<string, string>();
   for (const w of new Set(synced.map(({ tab }) => tab.windowId))) {
     const here = synced.filter(({ tab }) => tab.windowId === w);
@@ -149,7 +167,7 @@ function extractOpenTabs(profileId: string, state: ScopeState, closes: OpenTabCl
 
 function closesOnly(profileId: string, state: ScopeState, closes: OpenTabCloses, base: (key: string) => unknown): Extraction | null {
   forgetClosedPages(state, (key) => openTabValue(base(`${OPEN_TAB}${key}`)));
-  notePinPagesFromSync(store(), profileId, pagesSeenIn(state));
+  forgetPinPagesNoCopyShows(store(), profileId, pinPagesFromSyncIn(pagesSeenIn(state)));
   const closed = new Set(closes.keys());
   if (!closed.size) return null;
   const isClosed = (k: string) => k.startsWith(OPEN_TAB) && closed.has(k.slice(OPEN_TAB.length));
@@ -233,7 +251,6 @@ function retire(state: ScopeState): Adapter {
 const waiting: Adapter = { prefix: OPEN_TABS, extract: () => null, apply: () => false };
 
 export function openTabsAdapters(profileId: string, state: ScopeState, mode: OpenTabsMode, closes: OpenTabCloses, flag: () => HLC | undefined): Adapter[] {
-  if (mode !== "on") takePinPagesFromSync(profileId);
   if (mode !== "on" && closes.keys().length) closes.settle([...closes.keys()]);
   if (mode === "off") {
     forget(state);
