@@ -208,7 +208,10 @@ export function createGlassRegions(deps: GlassDeps, initiallyAvailable: boolean,
           const accepted = new Set(reply?.accepted ?? []);
           for (const entry of entries.values()) {
             const accepting = accepted.has(entry.id);
-            if (sentIds.has(entry.id) && !accepting) entry.resizing = false;
+            if (sentIds.has(entry.id) && !accepting) {
+              entry.resizing = false;
+              entry.applied = null;
+            }
             if (entry.pending?.generation !== update.generation) continue;
             const unchanged = accepting && !!entry.applied?.accepted && entry.applied.key === entry.pending.key;
             entry.applied = { generation: unchanged ? entry.applied!.generation : update.generation, key: entry.pending.key, accepted: accepting };
@@ -219,7 +222,10 @@ export function createGlassRegions(deps: GlassDeps, initiallyAvailable: boolean,
         (error) => {
           deps.report?.(error);
           for (const entry of entries.values()) {
-            if (sentIds.has(entry.id)) entry.resizing = false;
+            if (sentIds.has(entry.id)) {
+              entry.resizing = false;
+              entry.applied = null;
+            }
             if (entry.pending?.generation !== update.generation) continue;
             entry.pending = null;
           }

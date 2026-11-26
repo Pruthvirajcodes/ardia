@@ -672,6 +672,16 @@ test("an in-flight refusal or failure clears resize preservation even when a new
   await refused.accept(1, []);
   assert.equal(panel.attributes.glass, "off");
 
+  const revertedRefused = harness();
+  revertedRefused.glass.setPages([PAGE]);
+  const backPanel = node(sized());
+  await shown(revertedRefused, backPanel);
+  resize(revertedRefused, backPanel, sized(240, 200));
+  resize(revertedRefused, backPanel, sized());
+  revertedRefused.tick(STABLE_FRAMES);
+  await revertedRefused.accept(1, []);
+  assert.equal(backPanel.attributes.glass, "off", "reverted size cannot stay translucent via stale applied baseline after refusal");
+
   const failed = harness();
   failed.glass.setPages([PAGE]);
   const other = node(sized());
@@ -683,4 +693,15 @@ test("an in-flight refusal or failure clears resize preservation even when a new
   await failed.settle();
   assert.equal(other.attributes.glass, "off");
   assert.equal(failed.errors.length, 1);
+
+  const revertedFailed = harness();
+  revertedFailed.glass.setPages([PAGE]);
+  const backOther = node(sized());
+  await shown(revertedFailed, backOther);
+  resize(revertedFailed, backOther, sized(240, 200));
+  resize(revertedFailed, backOther, sized());
+  revertedFailed.tick(STABLE_FRAMES);
+  revertedFailed.replies[1].reject(new Error("gone"));
+  await revertedFailed.settle();
+  assert.equal(backOther.attributes.glass, "off", "reverted size cannot stay translucent via stale applied baseline after send error");
 });
